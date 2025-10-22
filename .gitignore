@@ -1,0 +1,27 @@
+# Python environments
+.venv/
+__pycache__/
+*.pyc
+
+# Tooling artefacts
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Editor
+.vscode/
+.idea/
+
+# Build outputs
+dist/
+build/
+
+# Application storage
+storage/
+data/
+
+# OS files
+Thumbs.db
+ehthumbs.db
+.DS_Store
+originFile/
