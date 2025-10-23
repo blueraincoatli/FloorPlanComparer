@@ -14,6 +14,7 @@ class StoredFile(BaseModel):
     size: int = Field(ge=0, description="File size in bytes")
     checksum: str = Field(description="SHA256 checksum")
     content_type: str | None = Field(default=None, description="Optional MIME type")
+    kind: str | None = Field(default=None, description="Logical category of the file (e.g. original, diff)")
 
 
 class JobMetadata(BaseModel):
@@ -63,3 +64,35 @@ class JobListPayload(BaseModel):
     limit: int = Field(ge=1, description="Requested page size")
     offset: int = Field(ge=0, description="Requested offset")
     jobs: list[JobSummary] = Field(default_factory=list, description="Jobs sorted by last update time")
+
+
+class DiffPolygon(BaseModel):
+    """Polygon geometry representing a diff entity."""
+
+    points: list[tuple[float, float]] = Field(description="Ordered list of (x, y) vertices")
+
+
+class DiffEntity(BaseModel):
+    """Single geometry entity difference."""
+
+    entity_id: str = Field(description="Unique identifier for the entity")
+    entity_type: str = Field(description="Entity category, e.g. wall, door")
+    change_type: Literal["added", "removed", "modified"] = Field(description="Type of change detected")
+    label: str | None = Field(default=None, description="Friendly label for the entity")
+    polygon: DiffPolygon = Field(description="Polygon describing the entity footprint")
+
+
+class DiffSummary(BaseModel):
+    """Aggregated diff statistics."""
+
+    added: int = Field(ge=0, description="Number of added entities")
+    removed: int = Field(ge=0, description="Number of removed entities")
+    modified: int = Field(ge=0, description="Number of modified entities")
+
+
+class JobDiffPayload(BaseModel):
+    """Full diff payload for a job."""
+
+    job_id: str = Field(description="Job identifier")
+    summary: DiffSummary = Field(description="Summary statistics")
+    entities: list[DiffEntity] = Field(default_factory=list, description="List of entity-level differences")

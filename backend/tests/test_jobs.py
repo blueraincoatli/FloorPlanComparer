@@ -117,3 +117,27 @@ async def test_list_jobs_returns_paginated_data(storage_root):
         paged_ids = set(returned_ids + [item["job_id"] for item in next_payload["jobs"]])
         for job_id in created_ids:
             assert job_id in paged_ids
+
+
+@pytest.mark.asyncio
+async def test_get_job_diff_returns_payload(storage_root):
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.post(
+            "/api/jobs",
+            files={
+                "original_dwg": ("example_a.dwg", b"foo", "application/dwg"),
+                "revised_dwg": ("example_b.dwg", b"bar", "application/dwg"),
+            },
+        )
+        job_id = resp.json()["data"]["job_id"]
+
+        diff_resp = await client.get(f"/api/jobs/{job_id}/diff")
+
+    assert diff_resp.status_code == 200
+    diff_payload = diff_resp.json()["data"]
+    assert diff_payload["job_id"] == job_id
+    assert diff_payload["summary"]["added"] >= 0
+    assert len(diff_payload["entities"]) > 0
+    first_entity = diff_payload["entities"][0]
+    assert "polygon" in first_entity

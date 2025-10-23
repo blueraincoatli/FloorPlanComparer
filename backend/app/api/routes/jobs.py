@@ -6,7 +6,7 @@ from pathlib import Path
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 
 from app.core.settings import get_settings
-from app.models import Envelope, JobCreatedPayload, JobListPayload, JobStatusPayload, JobSummary
+from app.models import Envelope, JobCreatedPayload, JobDiffPayload, JobListPayload, JobStatusPayload, JobSummary
 from app.services import JobService
 from app.tasks import process_job_task
 
@@ -113,3 +113,22 @@ async def get_job_status(
         raise HTTPException(status_code=404, detail="Job not found") from exc
 
     return Envelope(data=status_payload)
+
+
+@router.get(
+    "/{job_id}/diff",
+    response_model=Envelope[JobDiffPayload],
+    summary="Retrieve job diff payload",
+)
+async def get_job_diff(
+    job_id: str,
+    job_service: JobService = Depends(get_job_service),
+) -> Envelope[JobDiffPayload]:
+    """Return diff payload for a job."""
+
+    try:
+        diff_payload = job_service.get_job_diff(job_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Diff not found") from exc
+
+    return Envelope(data=diff_payload)

@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import type { FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000/api";
 
@@ -21,6 +22,30 @@ type JobSummary = {
   progress: number;
   createdAt: string;
   updatedAt: string;
+};
+
+type DiffPolygon = {
+  points: [number, number][];
+};
+
+type DiffEntity = {
+  entity_id: string;
+  entity_type: string;
+  change_type: "added" | "removed" | "modified";
+  label?: string | null;
+  polygon: DiffPolygon;
+};
+
+type DiffSummary = {
+  added: number;
+  removed: number;
+  modified: number;
+};
+
+type DiffPayload = {
+  job_id: string;
+  summary: DiffSummary;
+  entities: DiffEntity[];
 };
 
 const hints: UploadHint[] = [
@@ -59,6 +84,17 @@ export default function App() {
   const [jobs, setJobs] = useState<JobSummary[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [uploadSuccess, setUploadSuccess] = useState<string | null>(null);
+  const originalInputRef = useRef<HTMLInputElement | null>(null);
+  const revisedInputRef = useRef<HTMLInputElement | null>(null);
+  const [originalFile, setOriginalFile] = useState<File | null>(null);
+  const [revisedFile, setRevisedFile] = useState<File | null>(null);
+  const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
+  const [diffPayload, setDiffPayload] = useState<DiffPayload | null>(null);
+  const [isLoadingDiff, setIsLoadingDiff] = useState(false);
+  const [diffError, setDiffError] = useState<string | null>(null);
 
   const loadJobs = useCallback(async () => {
     setIsLoading(true);
@@ -87,11 +123,85 @@ export default function App() {
     }
   }, []);
 
+  const loadDiff = useCallback(async (jobId: string) => {
+    setDiffError(null);
+    setIsLoadingDiff(true);
+    try {
+      const response = await fetch(`${API_BASE_URL}/jobs/${jobId}/diff`);
+      if (!response.ok) {
+        throw new Error(`无法获取差异：${response.status}`);
+      }
+      const body = await response.json();
+      setDiffPayload(body?.data ?? null);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "加载差异时发生错误";
+      setDiffPayload(null);
+      setDiffError(message);
+    } finally {
+      setIsLoadingDiff(false);
+    }
+  }, []);
+
   useEffect(() => {
     void loadJobs();
   }, [loadJobs]);
 
   const hasJobs = useMemo(() => jobs.length > 0, [jobs]);
+  const hasDiff = diffPayload !== null;
+
+  const handleUpload = useCallback(
+    async (event: FormEvent<HTMLFormElement>) => {
+      event.preventDefault();
+      setUploadError(null);
+      setUploadSuccess(null);
+
+      if (!originalFile || !revisedFile) {
+        setUploadError("请同时选择原始图纸和施工图纸文件。");
+        return;
+      }
+
+      const formData = new FormData();
+      formData.append("original_dwg", originalFile, originalFile.name);
+      formData.append("revised_dwg", revisedFile, revisedFile.name);
+
+      setIsUploading(true);
+      try {
+        const response = await fetch(`${API_BASE_URL}/jobs`, {
+          method: "POST",
+          body: formData,
+        });
+
+        if (!response.ok) {
+          const payload = await response.json().catch(() => ({}));
+          const detail = payload?.detail ?? `${response.status}`;
+          throw new Error(`上传失败：${detail}`);
+        }
+
+        const payload = await response.json();
+        const jobId: string | undefined = payload?.data?.job_id;
+        setUploadSuccess(jobId ? `任务已创建（ID: ${jobId}）。` : "任务已创建。");
+        setOriginalFile(null);
+        setRevisedFile(null);
+        if (originalInputRef.current) {
+          originalInputRef.current.value = "";
+        }
+        if (revisedInputRef.current) {
+          revisedInputRef.current.value = "";
+        }
+        await loadJobs();
+        setSelectedJobId(jobId ?? null);
+        if (jobId) {
+          void loadDiff(jobId);
+        }
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "上传时发生未知错误";
+        setUploadError(message);
+      } finally {
+        setIsUploading(false);
+      }
+    },
+    [originalFile, revisedFile, loadJobs, loadDiff]
+  );
 
   return (
     <div className="layout">
@@ -101,6 +211,65 @@ export default function App() {
       </header>
 
       <main className="content">
+        <section className="panel">
+          <h2>上传图纸</h2>
+          <p className="muted">支持 DWG 文件，上传后系统会自动执行转换与差异分析。</p>
+
+          <form className="form" onSubmit={handleUpload}>
+            <div className="form-grid">
+              <label className="form-field">
+                <span>原始图纸</span>
+                <input
+                  ref={originalInputRef}
+                  type="file"
+                  accept=".dwg"
+                  onChange={(event) => setOriginalFile(event.target.files?.[0] ?? null)}
+                  required
+                />
+              </label>
+
+              <label className="form-field">
+                <span>施工图纸</span>
+                <input
+                  ref={revisedInputRef}
+                  type="file"
+                  accept=".dwg"
+                  onChange={(event) => setRevisedFile(event.target.files?.[0] ?? null)}
+                  required
+                />
+              </label>
+            </div>
+
+            <div className="form-actions">
+              <button className="primary-button" type="submit" disabled={isUploading}>
+                {isUploading ? "提交中..." : "提交比对任务"}
+              </button>
+              <button
+                className="ghost-button"
+                type="button"
+                onClick={() => {
+                  setOriginalFile(null);
+                  setRevisedFile(null);
+                  setUploadError(null);
+                  setUploadSuccess(null);
+                  if (originalInputRef.current) {
+                    originalInputRef.current.value = "";
+                  }
+                  if (revisedInputRef.current) {
+                    revisedInputRef.current.value = "";
+                  }
+                }}
+                disabled={isUploading}
+              >
+                重置
+              </button>
+            </div>
+          </form>
+
+          {uploadError && <p className="error">{uploadError}</p>}
+          {uploadSuccess && <p className="success">{uploadSuccess}</p>}
+        </section>
+
         <section className="panel">
           <h2>核心流程</h2>
           <ul>
@@ -126,7 +295,7 @@ export default function App() {
         <section className="panel">
           <div className="panel-header">
             <h2>任务概览</h2>
-            <button className="ghost-button" type="button" onClick={() => void loadJobs()} disabled={isLoading}>
+                <button className="ghost-button" type="button" onClick={() => void loadJobs()} disabled={isLoading}>
               {isLoading ? "刷新中..." : "刷新"}
             </button>
           </div>
@@ -146,7 +315,14 @@ export default function App() {
                 </thead>
                 <tbody>
                   {jobs.map((job) => (
-                    <tr key={job.jobId}>
+                    <tr
+                      key={job.jobId}
+                      className={job.jobId === selectedJobId ? "selected" : undefined}
+                      onClick={() => {
+                        setSelectedJobId(job.jobId);
+                        void loadDiff(job.jobId);
+                      }}
+                    >
                       <td>{job.jobId}</td>
                       <td>
                         <span className={`badge status-${job.status}`}>{statusText[job.status] ?? job.status}</span>
@@ -164,6 +340,40 @@ export default function App() {
         </section>
 
         <section className="panel">
+          <div className="panel-header">
+            <h2>差异可视化</h2>
+            {selectedJobId && (
+              <span className="muted">当前任务：{selectedJobId}</span>
+            )}
+          </div>
+
+          {!selectedJobId && <p className="muted">请选择任务以查看差异预览。</p>}
+          {selectedJobId && diffError && <p className="error">{diffError}</p>}
+          {selectedJobId && isLoadingDiff && <p className="muted">差异加载中...</p>}
+
+          {selectedJobId && hasDiff && diffPayload && (
+            <div className="diff-grid">
+              <div className="diff-summary">
+                <h3>统计概览</h3>
+                <ul>
+                  <li>
+                    <span className="dot dot-added" /> 新增：{diffPayload.summary.added}
+                  </li>
+                  <li>
+                    <span className="dot dot-removed" /> 删除：{diffPayload.summary.removed}
+                  </li>
+                  <li>
+                    <span className="dot dot-modified" /> 修改：{diffPayload.summary.modified}
+                  </li>
+                </ul>
+              </div>
+
+              <DiffCanvas entities={diffPayload.entities} />
+            </div>
+          )}
+        </section>
+
+        <section className="panel">
           <h2>下一步</h2>
           <p>
             当前页面为占位骨架。后续将接入上传控件、任务详情页和差异可视化组件，验证完整的端到端流程。
@@ -175,6 +385,62 @@ export default function App() {
       </main>
 
       <footer className="footer">© {new Date().getFullYear()} Floor Plan Comparer</footer>
+    </div>
+  );
+}
+
+type DiffCanvasProps = {
+  entities: DiffEntity[];
+};
+
+function DiffCanvas({ entities }: DiffCanvasProps) {
+  const allPoints = entities.flatMap((entity) => entity.polygon.points);
+  const xs = allPoints.map(([x]) => x);
+  const ys = allPoints.map(([, y]) => y);
+  const minX = Math.min(...xs, 0);
+  const maxX = Math.max(...xs, 100);
+  const minY = Math.min(...ys, 0);
+  const maxY = Math.max(...ys, 100);
+  const padding = 10;
+  const width = maxX - minX || 100;
+  const height = maxY - minY || 100;
+
+  const viewBox = `${minX - padding} ${minY - padding} ${width + padding * 2} ${height + padding * 2}`;
+
+  return (
+    <div className="diff-canvas">
+      <svg viewBox={viewBox} role="img" aria-label="Diff preview">
+        <defs>
+          <pattern id="grid" width="10" height="10" patternUnits="userSpaceOnUse">
+            <path d="M 10 0 L 0 0 0 10" fill="none" stroke="rgba(226, 232, 240, 0.15)" strokeWidth="0.5" />
+          </pattern>
+        </defs>
+        <rect
+          x={minX - padding}
+          y={minY - padding}
+          width={width + padding * 2}
+          height={height + padding * 2}
+          fill="url(#grid)"
+        />
+        {entities.map((entity) => (
+          <polygon
+            key={entity.entity_id}
+            points={entity.polygon.points.map((point) => point.join(",")).join(" ")}
+            className={`diff-shape diff-${entity.change_type}`}
+          >
+            <title>{entity.label ?? entity.entity_id}</title>
+          </polygon>
+        ))}
+      </svg>
+      <ul className="diff-legend">
+        {entities.map((entity) => (
+          <li key={entity.entity_id}>
+            <span className={`dot dot-${entity.change_type}`} />
+            <strong>{entity.label ?? entity.entity_id}</strong>
+            <small>{entity.entity_type}</small>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }

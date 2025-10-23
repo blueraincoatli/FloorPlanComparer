@@ -36,4 +36,10 @@ frontend/
 └── vite.config.ts
 ```
 
-当前 `App.tsx` 包含任务概览示例，将后续扩展为上传向导、任务详情、矢量差异查看等模块。建议在 `src/` 下按领域划分组件与页面，例如 `pages/UploadPage`、`components/DiffViewer`。 
+当前 `App.tsx` 包含任务概览示例，将后续扩展为上传向导、任务详情、矢量差异查看等模块。建议在 `src/` 下按领域划分组件与页面，例如 `pages/UploadPage`、`components/DiffViewer`。
+
+## 与后端联调
+
+- 默认从 `VITE_API_BASE_URL` 读取后端地址（默认值为 `http://localhost:8000/api`）。
+- 上传表单会向 `/jobs` POST 提交 `original_dwg` 与 `revised_dwg` 两个文件。
+- 任务概览通过 `/jobs` GET 获取最近任务列表，便于验证 Celery 异步处理结果。

@@ -8,8 +8,8 @@
 
 ## 前端
 - ✅ React + Vite + TypeScript 脚手架已搭建，并通过 `npm run build` 验证。
-- ✅ 首页展示 Celery 任务概览，支持从 `VITE_API_BASE_URL` 读取 API 地址并刷新列表。
-- 🔜 集成文件上传流程、任务详情视图及 Paper.js 差异可视化组件，完成端到端联调。
+- ✅ 首页提供图纸上传表单、任务概览表格，可自定义 `VITE_API_BASE_URL` 并刷新任务列表。
+- 🔜 衔接任务详情、Paper.js 差异可视化组件，丰富端到端交互体验。
 
 ## 运维与环境
 - ✅ 新增 `.dockerignore`、更新 `scripts/setup_env.(ps1|sh)`，统一使用 `uv sync` 管理依赖。

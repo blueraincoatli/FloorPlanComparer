@@ -9,7 +9,7 @@ from pathlib import Path
 from fastapi import UploadFile
 from filelock import FileLock
 
-from app.models.jobs import JobMetadata, JobStatusPayload, StoredFile
+from app.models.jobs import JobDiffPayload, JobMetadata, JobStatusPayload, StoredFile
 
 CHUNK_SIZE = 1024 * 1024
 
@@ -34,8 +34,8 @@ class JobService:
         original_dir.mkdir(parents=True, exist_ok=True)
         revised_dir.mkdir(parents=True, exist_ok=True)
 
-        original_file = await self._save_upload(original_dir, original)
-        revised_file = await self._save_upload(revised_dir, revised)
+        original_file = await self._save_upload(original_dir, original, kind="original")
+        revised_file = await self._save_upload(revised_dir, revised, kind="revised")
 
         now = datetime.now(timezone.utc)
         metadata = JobMetadata(
@@ -94,6 +94,22 @@ class JobService:
         end = min(start + limit, total)
         return total, jobs[start:end]
 
+    def get_job_diff(self, job_id: str) -> JobDiffPayload:
+        """Load diff payload for a given job."""
+
+        job = self.load_job(job_id)
+        diff_file = next((report for report in job.reports if report.kind == "diff"), None)
+        if diff_file is None:
+            diff_file = next((report for report in job.reports if report.name.endswith("diff.json")), None)
+        if diff_file is None:
+            raise FileNotFoundError(f"diff report not found for job {job_id}")
+
+        path = Path(diff_file.path)
+        if not path.exists():
+            raise FileNotFoundError(f"diff file missing for job {job_id}")
+        with self._metadata_lock(job_id):
+            return JobDiffPayload.model_validate_json(path.read_text(encoding="utf-8"))
+
     def save_metadata(self, metadata: JobMetadata) -> JobMetadata:
         """Write metadata to disk and return the model."""
 
@@ -140,7 +156,7 @@ class JobService:
         with lock:
             yield
 
-    async def _save_upload(self, target_dir: Path, upload: UploadFile) -> StoredFile:
+    async def _save_upload(self, target_dir: Path, upload: UploadFile, *, kind: str | None = None) -> StoredFile:
         filename = self._safe_filename(upload.filename)
         target_path = target_dir / filename
 
@@ -164,6 +180,7 @@ class JobService:
             size=size,
             checksum=hasher.hexdigest(),
             content_type=upload.content_type,
+            kind=kind,
         )
 
     def _meta_path(self, job_id: str) -> Path:
