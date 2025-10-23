@@ -1,0 +1,45 @@
+version: "3.9"
+
+services:
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+
+  api:
+    build:
+      context: ../..
+      dockerfile: backend/Dockerfile
+    working_dir: /app
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
+    environment:
+      FLOORPLAN_STORAGE_DIR: /data/storage
+      FLOORPLAN_CELERY_BROKER_URL: redis://redis:6379/0
+      FLOORPLAN_CELERY_RESULT_BACKEND: redis://redis:6379/0
+      FLOORPLAN_CELERY_TASK_ALWAYS_EAGER: "false"
+    volumes:
+      - ../../storage:/data/storage
+    ports:
+      - "8000:8000"
+    depends_on:
+      - redis
+
+  worker:
+    build:
+      context: ../..
+      dockerfile: backend/Dockerfile
+    working_dir: /app
+    command: celery -A app.worker.celery_app worker --loglevel=info
+    environment:
+      FLOORPLAN_STORAGE_DIR: /data/storage
+      FLOORPLAN_CELERY_BROKER_URL: redis://redis:6379/0
+      FLOORPLAN_CELERY_RESULT_BACKEND: redis://redis:6379/0
+      FLOORPLAN_CELERY_TASK_ALWAYS_EAGER: "false"
+    volumes:
+      - ../../storage:/data/storage
+    depends_on:
+      - redis
+
+  frontend:
+    image: node:22-alpine
+    command: tail -f /dev/null
+    profiles: ["dev"]

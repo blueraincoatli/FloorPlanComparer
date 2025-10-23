@@ -5,8 +5,8 @@ from app.models.responses import Envelope, HealthData
 router = APIRouter()
 
 
-@router.get("", response_model=Envelope[HealthData], summary="健康检查")
+@router.get("", response_model=Envelope[HealthData], summary="Health check")
 async def health_check() -> Envelope[HealthData]:
-    """返回服务健康状态。"""
+    """Return the API health status."""
 
     return Envelope(data=HealthData(status="ok"))

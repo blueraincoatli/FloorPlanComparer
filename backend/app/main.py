@@ -10,7 +10,7 @@ from app.core.settings import get_settings
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """初始化及清理钩子。"""
+    """Lifecycle hook executed on application startup and shutdown."""
 
     settings = get_settings()
     storage_dir = Path(settings.storage_dir)
@@ -19,7 +19,7 @@ async def lifespan(app: FastAPI):
 
 
 def create_app() -> FastAPI:
-    """FastAPI 应用工厂。"""
+    """FastAPI application factory."""
 
     settings = get_settings()
     app = FastAPI(

@@ -1,0 +1,14 @@
+.venv/
+backend/.venv/
+storage/
+data/
+originFile/
+__pycache__
+*.pyc
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+node_modules/
+frontend/dist/
+ops/compose/storage/
+*.log

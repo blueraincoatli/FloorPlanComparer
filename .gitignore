@@ -1,5 +1,7 @@
 # Python environments
 .venv/
+backend/.venv/
+backend/*.egg-info/
 __pycache__/
 *.pyc
 
