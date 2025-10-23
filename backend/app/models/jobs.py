@@ -27,6 +27,7 @@ class JobMetadata(BaseModel):
     updated_at: datetime = Field(description="UTC timestamp of the latest update")
     original_files: list[StoredFile] = Field(default_factory=list, description="Uploaded original files")
     revised_files: list[StoredFile] = Field(default_factory=list, description="Uploaded revised files")
+    converted_files: list[StoredFile] = Field(default_factory=list, description="Converted DXF files")
     reports: list[StoredFile] = Field(default_factory=list, description="Generated artefact files")
     logs: list[dict[str, Any]] = Field(default_factory=list, description="Processing log entries")
 

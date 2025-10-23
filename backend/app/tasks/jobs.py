@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import subprocess
 from dataclasses import asdict
 from datetime import datetime, timezone
 from hashlib import sha256
@@ -17,7 +18,7 @@ from app.models import (
     JobDiffPayload,
     StoredFile,
 )
-from app.services import JobService, ParsedEntity, match_entities, parse_dxf
+from app.services import JobService, ParsedEntity, match_entities, normalize_entities_by_grid, parse_dxf
 from app.worker import celery_app
 
 
@@ -53,56 +54,74 @@ def _build_stored_file(path: Path, content_type: str | None = None, *, kind: str
 
 @celery_app.task(name="jobs.convert")
 def convert_job_task(job_id: str) -> Dict[str, Any]:
+    """Converts DWG files to DXF using an external converter."""
     service = _service()
     job = service.load_job(job_id)
 
-    start_logs = job.logs + [
-        {"step": "convert", "status": "running", "timestamp": _timestamp()},
-    ]
-    job = service.update_metadata(
-        job_id,
-        status="processing",
-        progress=0.2,
-        logs=start_logs,
-    )
+    start_logs = job.logs + [{"step": "convert", "status": "running", "timestamp": _timestamp()}]
+    job = service.update_metadata(job_id, status="processing", progress=0.1, logs=start_logs)
 
-    convert_dir = _job_dir(job_id) / "converted"
-    convert_dir.mkdir(parents=True, exist_ok=True)
+    # --- DWG to DXF Conversion ---
+    CONVERTER_PATH = "C:/Program Files/ODA/ODAFileConverter 26.9.0/ODAFileConverter.exe"
+    if not Path(CONVERTER_PATH).exists():
+        raise FileNotFoundError(f"ODAFileConverter not found at {CONVERTER_PATH}")
 
-    original_file = job.original_files[0]
-    revised_file = job.revised_files[0]
+    converted_files: list[StoredFile] = []
+    all_entities = {}
+    files_to_convert = [("original", job.original_files[0]), ("revised", job.revised_files[0])]
 
-    original_entities = parse_dxf(Path(original_file.path))
-    revised_entities = parse_dxf(Path(revised_file.path))
+    for kind, file_to_convert in files_to_convert:
+        input_path = Path(file_to_convert.path)
+        output_dir = _job_dir(job_id) / "converted" / kind
+        output_dir.mkdir(parents=True, exist_ok=True)
 
-    converted_path = convert_dir / "entities.json"
-    serialized_original = [asdict(entity) for entity in original_entities]
-    serialized_revised = [asdict(entity) for entity in revised_entities]
-    converted_path.write_text(
-        json.dumps(
-            {
-                "original": serialized_original,
-                "revised": serialized_revised,
-            },
-            ensure_ascii=False,
-            indent=2,
-        ),
-        encoding="utf-8",
-    )
+        cmd = [
+            CONVERTER_PATH,
+            str(input_path.parent),  # Input directory
+            str(output_dir),  # Output directory
+            "ACAD2018",  # Output version
+            "DXF",  # Output type
+            "0",  # Recurse subdirectories (0 for no)
+            "1",  # Audit files
+        ]
+        
+        try:
+            # Using shell=True is not ideal, but might be necessary on Windows for paths with spaces
+            # A better long-term solution is to ensure paths are quoted correctly.
+            # For now, we trust the paths constructed internally.
+            result = subprocess.run(cmd, capture_output=True, text=True, check=True, shell=False)
+            
+            output_dxf_path = output_dir / f"{input_path.stem}.dxf"
+            if not output_dxf_path.exists():
+                raise FileNotFoundError(f"Converter failed to produce output file: {output_dxf_path}\nOutput: {result.stdout}\nError: {result.stderr}")
 
-    done_logs = job.logs + [
-        {"step": "convert", "status": "done", "timestamp": _timestamp(), "output": str(converted_path)},
-    ]
+            stored_dxf = _build_stored_file(output_dxf_path, content_type="application/vnd.dxf", kind=f"converted_{kind}")
+            converted_files.append(stored_dxf)
+            
+            # Still calling the placeholder parser for now
+            entities = parse_dxf(output_dxf_path)
+            all_entities[f"{kind}_entities"] = [asdict(entity) for entity in entities]
+
+        except (subprocess.CalledProcessError, FileNotFoundError) as e:
+            error_output = e.stderr if isinstance(e, subprocess.CalledProcessError) else str(e)
+            fail_logs = job.logs + [{"step": "convert", "status": "failed", "timestamp": _timestamp(), "error": error_output}]
+            service.update_metadata(job_id, status="failed", progress=0.2, logs=fail_logs)
+            # Re-raise to mark the task as failed
+            raise RuntimeError(f"Conversion failed for {input_path}: {error_output}") from e
+
+    # --- Update metadata and prepare for next step ---
+    done_logs = job.logs + [{"step": "convert", "status": "done", "timestamp": _timestamp()}]
     job = service.update_metadata(
         job_id,
         progress=0.35,
         logs=done_logs,
+        converted_files=job.converted_files + converted_files,
     )
 
     return {
         "job_id": job_id,
-        "original_entities": serialized_original,
-        "revised_entities": serialized_revised,
+        "original_entities": all_entities.get("original_entities", []),
+        "revised_entities": all_entities.get("revised_entities", []),
     }
 
 
@@ -187,7 +206,14 @@ def match_job_task(payload: Dict[str, Any]) -> Dict[str, Any]:
     report_path = report_dir / "diff.json"
     original_entities = _deserialize_entities(payload.get("original_entities", []))
     revised_entities = _deserialize_entities(payload.get("revised_entities", []))
-    matches = match_entities(original_entities, revised_entities)
+
+    # --- Normalize revised entities to align with original ---
+    job = service.update_metadata(job_id, logs=job.logs + [{"step": "normalize", "status": "running", "timestamp": _timestamp()}])
+    normalized_revised_entities = normalize_entities_by_grid(revised_entities, original_entities)
+    job = service.update_metadata(job_id, logs=job.logs + [{"step": "normalize", "status": "done", "timestamp": _timestamp()}])
+    # --- End Normalization ---
+
+    matches = match_entities(original_entities, normalized_revised_entities)
 
     diff_entities: list[DiffEntity] = []
 
