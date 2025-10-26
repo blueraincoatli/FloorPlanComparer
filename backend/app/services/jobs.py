@@ -1,13 +1,14 @@
 from __future__ import annotations
 
+import json
 import secrets
-from contextlib import contextmanager
+import sqlite3
 from datetime import datetime, timezone
 from hashlib import sha256
 from pathlib import Path
+from typing import Any
 
 from fastapi import UploadFile
-from filelock import FileLock
 
 from app.models.jobs import JobDiffPayload, JobMetadata, JobStatusPayload, StoredFile
 
@@ -23,6 +24,9 @@ class JobService:
         self._meta_dir = self._root / "meta"
         self._jobs_dir.mkdir(parents=True, exist_ok=True)
         self._meta_dir.mkdir(parents=True, exist_ok=True)
+        self._db_path = self._meta_dir / "jobs.db"
+        self._initialize_database()
+        self._migrate_legacy_metadata()
 
     async def create_job(self, original: UploadFile, revised: UploadFile) -> JobMetadata:
         """Persist uploaded files and create initial metadata."""
@@ -53,11 +57,7 @@ class JobService:
     def load_job(self, job_id: str) -> JobMetadata:
         """Read job metadata from storage."""
 
-        meta_path = self._meta_path(job_id)
-        if not meta_path.exists():
-            raise FileNotFoundError(f"metadata not found for job {job_id}")
-        with self._metadata_lock(job_id):
-            return self._read_metadata(meta_path)
+        return self._read_metadata(job_id)
 
     def get_job_status(self, job_id: str) -> JobStatusPayload:
         """Convert metadata into the public status payload."""
@@ -78,21 +78,25 @@ class JobService:
         if offset < 0:
             raise ValueError("offset cannot be negative")
 
-        meta_paths = [path for path in self._meta_dir.glob("*.json") if path.is_file()]
-        if not meta_paths:
-            return 0, []
+        with self._connect() as conn:
+            total_row = conn.execute("SELECT COUNT(*) AS count FROM jobs").fetchone()
+            total = int(total_row["count"]) if total_row else 0
+            if total == 0:
+                return 0, []
 
-        jobs: list[JobMetadata] = []
-        for path in meta_paths:
-            job_id = path.stem
-            with self._metadata_lock(job_id):
-                jobs.append(self._read_metadata(path))
+            cursor = conn.execute(
+                """
+                SELECT job_id, status, progress, created_at, updated_at,
+                       original_files, revised_files, converted_files, reports, logs
+                FROM jobs
+                ORDER BY updated_at DESC
+                LIMIT ? OFFSET ?
+                """,
+                (limit, offset),
+            )
+            jobs = [self._row_to_metadata(row) for row in cursor.fetchall()]
 
-        jobs.sort(key=lambda job: job.updated_at, reverse=True)
-        total = len(jobs)
-        start = min(offset, total)
-        end = min(start + limit, total)
-        return total, jobs[start:end]
+        return total, jobs
 
     def get_job_diff(self, job_id: str) -> JobDiffPayload:
         """Load diff payload for a given job."""
@@ -107,8 +111,7 @@ class JobService:
         path = Path(diff_file.path)
         if not path.exists():
             raise FileNotFoundError(f"diff file missing for job {job_id}")
-        with self._metadata_lock(job_id):
-            return JobDiffPayload.model_validate_json(path.read_text(encoding="utf-8"))
+        return JobDiffPayload.model_validate_json(path.read_text(encoding="utf-8"))
 
     def save_metadata(self, metadata: JobMetadata) -> JobMetadata:
         """Write metadata to disk and return the model."""
@@ -119,42 +122,126 @@ class JobService:
     def update_metadata(self, job_id: str, **updates) -> JobMetadata:
         """Update selected fields of the stored metadata."""
 
-        meta_path = self._meta_path(job_id)
-        if not meta_path.exists():
-            raise FileNotFoundError(f"metadata not found for job {job_id}")
-        with self._metadata_lock(job_id):
-            job = self._read_metadata(meta_path)
-            new_job = job.model_copy(
-                update={
-                    **updates,
-                    "updated_at": datetime.now(timezone.utc),
-                }
-            )
-            self._write_metadata_unlocked(meta_path, new_job)
-            return new_job
+        job = self.load_job(job_id)
+        new_job = job.model_copy(
+            update={
+                **updates,
+                "updated_at": datetime.now(timezone.utc),
+            }
+        )
+        self._write_metadata(new_job)
+        return new_job
 
     def _write_metadata(self, metadata: JobMetadata) -> None:
-        meta_path = self._meta_path(metadata.job_id)
-        with self._metadata_lock(metadata.job_id):
-            self._write_metadata_unlocked(meta_path, metadata)
+        payload = self._serialize_metadata(metadata)
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO jobs (
+                    job_id, status, progress, created_at, updated_at,
+                    original_files, revised_files, converted_files, reports, logs
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(job_id) DO UPDATE SET
+                    status=excluded.status,
+                    progress=excluded.progress,
+                    created_at=excluded.created_at,
+                    updated_at=excluded.updated_at,
+                    original_files=excluded.original_files,
+                    revised_files=excluded.revised_files,
+                    converted_files=excluded.converted_files,
+                    reports=excluded.reports,
+                    logs=excluded.logs
+                """,
+                payload,
+            )
 
-    def _read_metadata(self, meta_path: Path) -> JobMetadata:
-        return JobMetadata.model_validate_json(meta_path.read_text(encoding="utf-8"))
+    def _read_metadata(self, job_id: str) -> JobMetadata:
+        with self._connect() as conn:
+            row = conn.execute(
+                """
+                SELECT job_id, status, progress, created_at, updated_at,
+                       original_files, revised_files, converted_files, reports, logs
+                FROM jobs
+                WHERE job_id = ?
+                """,
+                (job_id,),
+            ).fetchone()
+        if row is None:
+            raise FileNotFoundError(f"metadata not found for job {job_id}")
+        return self._row_to_metadata(row)
 
-    def _write_metadata_unlocked(self, meta_path: Path, metadata: JobMetadata) -> None:
-        temp_path = meta_path.with_suffix(meta_path.suffix + ".tmp")
-        temp_path.write_text(
-            metadata.model_dump_json(indent=2, ensure_ascii=False),
-            encoding="utf-8",
+    def _serialize_metadata(self, metadata: JobMetadata) -> tuple[Any, ...]:
+        return (
+            metadata.job_id,
+            metadata.status,
+            float(metadata.progress),
+            metadata.created_at.isoformat(),
+            metadata.updated_at.isoformat(),
+            json.dumps([file.model_dump() for file in metadata.original_files], ensure_ascii=False),
+            json.dumps([file.model_dump() for file in metadata.revised_files], ensure_ascii=False),
+            json.dumps([file.model_dump() for file in metadata.converted_files], ensure_ascii=False),
+            json.dumps([file.model_dump() for file in metadata.reports], ensure_ascii=False),
+            json.dumps(metadata.logs, ensure_ascii=False),
         )
-        temp_path.replace(meta_path)
 
-    @contextmanager
-    def _metadata_lock(self, job_id: str):
-        lock_path = self._meta_dir / f"{job_id}.lock"
-        lock = FileLock(str(lock_path))
-        with lock:
-            yield
+    def _row_to_metadata(self, row: sqlite3.Row) -> JobMetadata:
+        def _parse_files(value: str) -> list[StoredFile]:
+            data = json.loads(value)
+            return [StoredFile.model_validate(item) for item in data]
+
+        return JobMetadata(
+            job_id=row["job_id"],
+            status=row["status"],
+            progress=float(row["progress"]),
+            created_at=datetime.fromisoformat(row["created_at"]),
+            updated_at=datetime.fromisoformat(row["updated_at"]),
+            original_files=_parse_files(row["original_files"]),
+            revised_files=_parse_files(row["revised_files"]),
+            converted_files=_parse_files(row["converted_files"]),
+            reports=_parse_files(row["reports"]),
+            logs=json.loads(row["logs"] or "[]"),
+        )
+
+    def _connect(self) -> sqlite3.Connection:
+        conn = sqlite3.connect(self._db_path)
+        conn.row_factory = sqlite3.Row
+        return conn
+
+    def _initialize_database(self) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS jobs (
+                    job_id TEXT PRIMARY KEY,
+                    status TEXT NOT NULL,
+                    progress REAL NOT NULL,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    original_files TEXT NOT NULL,
+                    revised_files TEXT NOT NULL,
+                    converted_files TEXT NOT NULL,
+                    reports TEXT NOT NULL,
+                    logs TEXT NOT NULL
+                )
+                """
+            )
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_jobs_updated_at ON jobs(updated_at)")
+
+    def _migrate_legacy_metadata(self) -> None:
+        legacy_files = sorted(self._meta_dir.glob("*.json"))
+        if not legacy_files:
+            return
+        for path in legacy_files:
+            job_id = path.stem
+            with self._connect() as conn:
+                exists = conn.execute("SELECT 1 FROM jobs WHERE job_id = ?", (job_id,)).fetchone()
+            if exists:
+                continue
+            try:
+                legacy_metadata = JobMetadata.model_validate_json(path.read_text(encoding="utf-8"))
+            except Exception:
+                continue
+            self._write_metadata(legacy_metadata)
 
     async def _save_upload(self, target_dir: Path, upload: UploadFile, *, kind: str | None = None) -> StoredFile:
         filename = self._safe_filename(upload.filename)
@@ -182,9 +269,6 @@ class JobService:
             content_type=upload.content_type,
             kind=kind,
         )
-
-    def _meta_path(self, job_id: str) -> Path:
-        return self._meta_dir / f"{job_id}.json"
 
     @staticmethod
     def _safe_filename(filename: str | None) -> str:

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 import pytest
@@ -8,6 +7,7 @@ from httpx import ASGITransport, AsyncClient
 
 from app.core.settings import get_settings
 from app.main import app
+from app.services import JobService
 
 
 @pytest.fixture
@@ -37,22 +37,21 @@ async def test_create_job_persists_files_and_metadata(storage_root):
     job_id = payload["data"]["job_id"]
     assert payload["data"]["status"] == "queued"
 
-    meta_path = storage_root / "meta" / f"{job_id}.json"
-    assert meta_path.exists()
+    service = JobService(storage_root)
+    metadata = service.load_job(job_id)
 
-    metadata = json.loads(meta_path.read_text(encoding="utf-8"))
-    assert metadata["status"] == "completed"
-    assert metadata["progress"] == 1.0
-    assert metadata["original_files"][0]["name"] == "original.dwg"
-    assert metadata["logs"]
-    assert metadata["logs"][0]["step"] == "enqueue"
-    steps = {entry["step"] for entry in metadata["logs"]}
+    assert metadata.status == "completed"
+    assert metadata.progress == 1.0
+    assert metadata.original_files[0].name == "original.dwg"
+    assert metadata.logs
+    assert metadata.logs[0]["step"] == "enqueue"
+    steps = {entry["step"] for entry in metadata.logs}
     assert {"convert", "extract", "match"}.issubset(steps)
-    assert metadata["reports"], "expected at least one generated report"
-    report_path = Path(metadata["reports"][0]["path"])
+    assert metadata.reports, "expected at least one generated report"
+    report_path = Path(metadata.reports[0].path)
     assert report_path.exists()
 
-    stored_path = Path(metadata["original_files"][0]["path"])
+    stored_path = Path(metadata.original_files[0].path)
     assert stored_path.exists()
     assert stored_path.read_bytes() == b"original-bytes"
 

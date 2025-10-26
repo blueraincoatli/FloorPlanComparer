@@ -17,6 +17,8 @@ __pycache__/
 # Build outputs
 dist/
 build/
+frontend/dist/
+frontend/node_modules/
 
 # Application storage
 storage/
@@ -27,3 +29,4 @@ Thumbs.db
 ehthumbs.db
 .DS_Store
 originFile/
+*.msi 
