@@ -14,6 +14,10 @@ class Settings(BaseSettings):
         description="List of allowed CORS origins; replace with concrete domains in production",
     )
     storage_dir: str = Field(default="storage", description="Root directory for file storage")
+    converter_path: str | None = Field(
+        default=None,
+        description="Optional absolute path to the ODA File Converter executable",
+    )
     celery_broker_url: str = Field(
         default="memory://",
         description="Celery broker connection string; override with Redis for production",

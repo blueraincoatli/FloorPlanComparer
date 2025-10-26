@@ -371,3 +371,11 @@ export function ViewerCanvas({ originalGeometry, revisedGeometry, activeFilters,
 
 
 
+
+## 10. 2025-10-23 Audit Follow-ups
+1. Restore a runnable pipeline: keep the mock CAD flow until the `ezdxf`/`shapely`/`rtree` stack is packaged and optional, so tests can pass before heavy deps land.
+2. Extend `backend/pyproject.toml` with CAD extras, export `normalize_entities_by_grid`, and document configuration knobs (ODA path, task toggles) via settings.
+3. Wrap the ODA converter behind a configurable adapter (e.g., `FLOORPLAN_CONVERTER_PATH`) and plan container sandboxing for cross-platform execution.
+4. Improve Celery error reporting and retries so the API can expose failed/terminal states with meaningful messages instead of stuck `processing` jobs.
+5. Clean the repo: remove `node_modules`, `dist`, `.venv`, and installer binaries from version control and tighten `.gitignore` plus contributor docs.
+6. Split the React UI into Upload/List/Diff/Summary components and define an async status contract (polling or WebSocket) with the backend.

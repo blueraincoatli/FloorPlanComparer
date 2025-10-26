@@ -32,6 +32,15 @@ def _storage_root() -> Path:
     return Path(settings.storage_dir)
 
 
+def _converter_path() -> Path | None:
+    settings = get_settings()
+    value = settings.converter_path
+    if not value:
+        return None
+    candidate = Path(value)
+    return candidate if candidate.exists() else None
+
+
 def _job_dir(job_id: str) -> Path:
     return _storage_root() / "jobs" / job_id
 
@@ -61,10 +70,8 @@ def convert_job_task(job_id: str) -> Dict[str, Any]:
     start_logs = job.logs + [{"step": "convert", "status": "running", "timestamp": _timestamp()}]
     job = service.update_metadata(job_id, status="processing", progress=0.1, logs=start_logs)
 
-    # --- DWG to DXF Conversion ---
-    CONVERTER_PATH = "C:/Program Files/ODA/ODAFileConverter 26.9.0/ODAFileConverter.exe"
-    if not Path(CONVERTER_PATH).exists():
-        raise FileNotFoundError(f"ODAFileConverter not found at {CONVERTER_PATH}")
+    converter_executable = _converter_path()
+    using_stub = converter_executable is None
 
     converted_files: list[StoredFile] = []
     all_entities = {}
@@ -75,42 +82,61 @@ def convert_job_task(job_id: str) -> Dict[str, Any]:
         output_dir = _job_dir(job_id) / "converted" / kind
         output_dir.mkdir(parents=True, exist_ok=True)
 
-        cmd = [
-            CONVERTER_PATH,
-            str(input_path.parent),  # Input directory
-            str(output_dir),  # Output directory
-            "ACAD2018",  # Output version
-            "DXF",  # Output type
-            "0",  # Recurse subdirectories (0 for no)
-            "1",  # Audit files
-        ]
-        
+        output_dxf_path = output_dir / f"{input_path.stem}.dxf"
+
         try:
-            # Using shell=True is not ideal, but might be necessary on Windows for paths with spaces
-            # A better long-term solution is to ensure paths are quoted correctly.
-            # For now, we trust the paths constructed internally.
-            result = subprocess.run(cmd, capture_output=True, text=True, check=True, shell=False)
-            
-            output_dxf_path = output_dir / f"{input_path.stem}.dxf"
+            if using_stub:
+                _stub_convert(input_path, output_dxf_path)
+                result_stdout = ""
+                result_stderr = ""
+            else:
+                cmd = [
+                    str(converter_executable),
+                    str(input_path.parent),
+                    str(output_dir),
+                    "ACAD2018",
+                    "DXF",
+                    "0",
+                    "1",
+                ]
+                result = subprocess.run(cmd, capture_output=True, text=True, check=True, shell=False)
+                result_stdout = result.stdout
+                result_stderr = result.stderr
+
             if not output_dxf_path.exists():
-                raise FileNotFoundError(f"Converter failed to produce output file: {output_dxf_path}\nOutput: {result.stdout}\nError: {result.stderr}")
+                raise FileNotFoundError(
+                    f"Converter failed to produce output file: {output_dxf_path}\n"
+                    f"stdout: {result_stdout}\nstderr: {result_stderr}"
+                )
 
             stored_dxf = _build_stored_file(output_dxf_path, content_type="application/vnd.dxf", kind=f"converted_{kind}")
             converted_files.append(stored_dxf)
-            
-            # Still calling the placeholder parser for now
+
             entities = parse_dxf(output_dxf_path)
             all_entities[f"{kind}_entities"] = [asdict(entity) for entity in entities]
 
-        except (subprocess.CalledProcessError, FileNotFoundError) as e:
-            error_output = e.stderr if isinstance(e, subprocess.CalledProcessError) else str(e)
-            fail_logs = job.logs + [{"step": "convert", "status": "failed", "timestamp": _timestamp(), "error": error_output}]
+        except (subprocess.CalledProcessError, FileNotFoundError) as exc:
+            error_output = exc.stderr if isinstance(exc, subprocess.CalledProcessError) else str(exc)
+            fail_logs = job.logs + [
+                {
+                    "step": "convert",
+                    "status": "failed",
+                    "timestamp": _timestamp(),
+                    "error": error_output,
+                }
+            ]
             service.update_metadata(job_id, status="failed", progress=0.2, logs=fail_logs)
-            # Re-raise to mark the task as failed
-            raise RuntimeError(f"Conversion failed for {input_path}: {error_output}") from e
+            raise RuntimeError(f"Conversion failed for {input_path}: {error_output}") from exc
 
     # --- Update metadata and prepare for next step ---
-    done_logs = job.logs + [{"step": "convert", "status": "done", "timestamp": _timestamp()}]
+    done_logs = job.logs + [
+        {
+            "step": "convert",
+            "status": "done",
+            "timestamp": _timestamp(),
+            "mode": "stub" if using_stub else "external",
+        }
+    ]
     job = service.update_metadata(
         job_id,
         progress=0.35,
@@ -180,6 +206,12 @@ def _deserialize_entities(entities: Iterable[dict[str, Any]]) -> list[ParsedEnti
         )
         for item in entities
     ]
+
+
+def _stub_convert(source: Path, destination: Path) -> None:
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    data = source.read_bytes() if source.exists() else b""
+    destination.write_bytes(data or b"stub-dxf")
 
 
 @celery_app.task(name="jobs.match")
