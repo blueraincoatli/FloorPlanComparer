@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Floor Plan Comparer 演示界面</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .header {
+            background-color: #fff;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        .content {
+            display: flex;
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+        .panel {
+            background-color: #fff;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            flex: 1;
+        }
+        .upload-area {
+            border: 2px dashed #ccc;
+            border-radius: 8px;
+            padding: 40px;
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        .btn {
+            background-color: #1890ff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        .btn:hover {
+            background-color: #40a9ff;
+        }
+        .steps {
+            display: flex;
+            justify-content: space-between;
+            margin: 30px 0;
+        }
+        .step {
+            text-align: center;
+            flex: 1;
+        }
+        .step.active {
+            font-weight: bold;
+            color: #1890ff;
+        }
+        .step-number {
+            display: inline-block;
+            width: 30px;
+            height: 30px;
+            background-color: #1890ff;
+            color: white;
+            border-radius: 50%;
+            line-height: 30px;
+            margin-bottom: 10px;
+        }
+        .step.active .step-number {
+            background-color: #40a9ff;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 12px;
+            text-align: left;
+        }
+        th {
+            background-color: #f2f2f2;
+        }
+        .diff-viewer {
+            background-color: #fff;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .toggle-btn {
+            padding: 5px 10px;
+            background-color: #f0f0f0;
+            color: black;
+            border: 1px solid #d9d9d9;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-top: 10px;
+        }
+        .toggle-btn.active {
+            background-color: #1890ff;
+            color: white;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Floor Plan Comparer</h1>
+        <p>平面图差异比对的端到端工具。</p>
+        <button class="toggle-btn" onclick="toggleMode()">切换到增强模式</button>
+    </div>
+
+    <div class="content">
+        <div class="panel">
+            <h2>上传DWG文件</h2>
+            <div class="upload-area">
+                <p>拖拽文件到此处或点击选择文件</p>
+                <button class="btn">选择文件</button>
+            </div>
+            <button class="btn">开始处理</button>
+        </div>
+
+        <div class="panel">
+            <h2>处理步骤</h2>
+            <div class="steps">
+                <div class="step active">
+                    <div class="step-number">1</div>
+                    <div>上传原始图纸</div>
+                    <div>选择事务所初稿 DWG</div>
+                </div>
+                <div class="step">
+                    <div class="step-number">2</div>
+                    <div>上传施工图</div>
+                    <div>选择施工图 DWG</div>
+                </div>
+                <div class="step">
+                    <div class="step-number">3</div>
+                    <div>查看比对结果</div>
+                    <div>浏览差异图层</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="panel">
+        <h2>处理任务</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>任务ID</th>
+                    <th>原始文件</th>
+                    <th>目标文件</th>
+                    <th>状态</th>
+                    <th>创建时间</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>12345</td>
+                    <td>original.dwg</td>
+                    <td>modified.dwg</td>
+                    <td>已完成</td>
+                    <td>2025-10-28 14:30</td>
+                </tr>
+                <tr>
+                    <td>67890</td>
+                    <td>plan_a.dwg</td>
+                    <td>plan_b.dwg</td>
+                    <td>处理中</td>
+                    <td>2025-10-28 15:45</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <div class="diff-viewer">
+        <h2>差异查看器</h2>
+        <div style="background-color: #f0f0f0; height: 300px; display: flex; align-items: center; justify-content: center;">
+            <p>差异图像预览区域</p>
+        </div>
+        <div style="margin-top: 20px;">
+            <button class="btn">导出报告</button>
+            <button class="btn" style="background-color: #52c41a;">下载PDF</button>
+        </div>
+    </div>
+
+    <div class="panel">
+        <h2>下一步</h2>
+        <p>继续完善任务详情页、批量导出与权限控制，以支撑真实场景。</p>
+        <p>若需自定义 API 地址，可在前端目录创建 <code>.env</code> 并设置 <code>VITE_API_BASE_URL</code>。</p>
+    </div>
+
+    <footer style="text-align: center; padding: 20px; color: #666;">
+        © 2025 Floor Plan Comparer
+    </footer>
+
+    <script>
+        function toggleMode() {
+            const btn = event.target;
+            btn.classList.toggle('active');
+            btn.textContent = btn.classList.contains('active') ? '切换到标准模式' : '切换到增强模式';
+            
+            // 这里可以添加切换模式的逻辑
+            alert('模式切换功能在完整实现中可用');
+        }
+    </script>
+</body>
+</html>
