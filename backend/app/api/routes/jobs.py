@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
+from fastapi.responses import FileResponse
 
 from app.core.settings import get_settings
 from app.models import Envelope, JobCreatedPayload, JobDiffPayload, JobListPayload, JobStatusPayload, JobSummary
@@ -82,15 +83,20 @@ async def create_job(
         {
             "step": "enqueue",
             "status": "queued",
+            "level": "info",
             "timestamp": datetime.now(timezone.utc).isoformat(),
         }
     ]
     metadata = job_service.update_metadata(metadata.job_id, logs=enqueue_logs)
 
-    try:
-        process_job_task.delay(metadata.job_id)
-    except Exception as exc:  # pragma: no cover - Celery eager mode raises inline
-        raise HTTPException(status_code=500, detail="Failed to enqueue job") from exc
+    settings = get_settings()
+    if settings.celery_task_always_eager:
+        process_job_task(metadata.job_id)
+    else:
+        try:
+            process_job_task.delay(metadata.job_id)
+        except Exception as exc:  # pragma: no cover - broker connection issues
+            raise HTTPException(status_code=500, detail="Failed to enqueue job") from exc
 
     payload = JobCreatedPayload(job_id=metadata.job_id, status=metadata.status)
     return Envelope(data=payload)
@@ -132,3 +138,28 @@ async def get_job_diff(
         raise HTTPException(status_code=404, detail="Diff not found") from exc
 
     return Envelope(data=diff_payload)
+
+
+@router.get(
+    "/{job_id}/artefacts/{artefact_kind}",
+    summary="Download job artefact",
+)
+async def download_job_artefact(
+    job_id: str,
+    artefact_kind: str,
+    job_service: JobService = Depends(get_job_service),
+):
+    try:
+        stored_file = job_service.get_report_file(job_id, artefact_kind)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Artefact not found") from exc
+
+    path = Path(stored_file.path)
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="Artefact file missing")
+
+    return FileResponse(
+        path=path,
+        filename=stored_file.name,
+        media_type=stored_file.content_type or "application/octet-stream",
+    )

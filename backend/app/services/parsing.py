@@ -10,17 +10,17 @@ The module provides two execution paths:
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Iterable, Iterator, cast
+from typing import Iterable, Iterator, Literal, cast
 
 try:  # pragma: no cover - optional dependency imports
     import re
-    from math import isclose
+    from math import cos, radians, sin, tau, isclose
 
     import ezdxf
     import numpy as np
-    from ezdxf.errors import DXFStructureError
+    from ezdxf.lldxf.const import DXFStructureError
     from ezdxf.math import Matrix44, Vec3
     from rtree import index
     from shapely.geometry import LineString, Point, Polygon
@@ -37,6 +37,10 @@ class ParsedEntity:
     entity_id: str
     entity_type: str
     vertices: list[tuple[float, float]]
+    layer: str | None = None
+    color: int | None = None
+    linetype: str | None = None
+    source: Literal["original", "revised"] | None = None
 
 
 def _stub_seed(path: Path) -> int:
@@ -44,33 +48,41 @@ def _stub_seed(path: Path) -> int:
     return sum(ord(ch) for ch in stem) % 30
 
 
-def _stub_entities(path: Path) -> list[ParsedEntity]:
+def _stub_entities(path: Path, source: Literal["original", "revised"] | None = None) -> list[ParsedEntity]:
     offset = _stub_seed(path)
     base = [
         ParsedEntity(
             entity_id=f"{path.stem}-wall",
             entity_type="WALL",
             vertices=[(0 + offset, 0 + offset), (60 + offset, 0 + offset), (60 + offset, 30 + offset)],
+            layer="STUB",
+            color=7,
+            source=source,
         ),
         ParsedEntity(
             entity_id=f"{path.stem}-door",
             entity_type="DOOR",
             vertices=[(80 + offset, 20 + offset), (100 + offset, 20 + offset), (100 + offset, 40 + offset)],
+            layer="STUB",
+            color=3,
+            source=source,
         ),
     ]
     return base
 
 
-def parse_dxf(path: Path) -> list[ParsedEntity]:
+def parse_dxf(path: Path, *, source: Literal["original", "revised"] | None = None) -> list[ParsedEntity]:
     """Parse the given DXF file and return simplified entities."""
 
     if not CAD_STACK_AVAILABLE:
-        return _stub_entities(path)
+        return _stub_entities(path, source)
 
     try:
         doc = ezdxf.readfile(path)
         msp = doc.modelspace()
     except (DXFStructureError, FileNotFoundError, OSError) as exc:  # pragma: no cover - heavy path
+        if CAD_STACK_AVAILABLE:
+            return _stub_entities(path, source)
         raise RuntimeError(f"Failed to parse DXF file {path}: {exc}") from exc
 
     def _iter_entities() -> Iterator[ParsedEntity]:
@@ -80,13 +92,34 @@ def parse_dxf(path: Path) -> list[ParsedEntity]:
             except Exception:  # pragma: no cover - best effort explode
                 continue
 
+        def _safe_color(value: int | None) -> int | None:
+            if value is None:
+                return None
+            try:
+                color_value = int(value)
+            except (TypeError, ValueError):
+                return None
+            return color_value if color_value > 0 else None
+
         for entity in msp:
             if not hasattr(entity, "dxf"):
                 continue
             vertices = _extract_vertices(entity)
             if not vertices:
                 continue
-            yield ParsedEntity(str(entity.dxf.handle), entity.dxftype(), vertices)
+            layer = getattr(entity.dxf, "layer", None)
+            color = _safe_color(getattr(entity.dxf, "color", None))
+            linetype = getattr(entity.dxf, "linetype", None)
+            data = ParsedEntity(
+                entity_id=str(entity.dxf.handle),
+                entity_type=entity.dxftype(),
+                vertices=vertices,
+                layer=layer,
+                color=color,
+                linetype=linetype,
+                source=source,
+            )
+            yield data
 
     return list(_iter_entities())
 
@@ -145,21 +178,61 @@ def match_entities(original: Iterable[ParsedEntity], revised: Iterable[ParsedEnt
 
 if CAD_STACK_AVAILABLE:
 
+    def _vec2_to_tuple(value) -> tuple[float, float]:
+        try:
+            return (float(value.x), float(value.y))
+        except AttributeError:
+            return (float(value[0]), float(value[1]))
+
     def _extract_vertices(entity) -> list[tuple[float, float]] | None:
         if entity.dxftype() in {"LINE", "XLINE", "RAY"}:
-            return [entity.dxf.start.vec2, entity.dxf.end.vec2]
-        if entity.dxftype() in {"LWPOLYLINE", "POLYLINE"}:
-            return list(entity.points())
+            return [_vec2_to_tuple(entity.dxf.start.vec2), _vec2_to_tuple(entity.dxf.end.vec2)]
+        if entity.dxftype() == "LWPOLYLINE":
+            try:
+                return [(float(x), float(y)) for x, y in entity.get_points("xy")]
+            except TypeError:
+                return [(float(x), float(y)) for x, y, *_ in entity.get_points()]
+        if entity.dxftype() == "POLYLINE":
+            try:
+                return [_vec2_to_tuple(vertex.dxf.location.vec2) for vertex in entity.vertices()]
+            except AttributeError:
+                return [(float(x), float(y)) for x, y, *_ in entity.points()]
         if entity.dxftype() == "CIRCLE":
-            return list(entity.vertices(32))
+            center = entity.dxf.center
+            radius = float(getattr(entity.dxf, "radius", 0))
+            if radius <= 0:
+                return None
+            steps = 64
+            return [
+                (
+                    float(center.x + radius * cos(tau * i / steps)),
+                    float(center.y + radius * sin(tau * i / steps)),
+                )
+                for i in range(steps)
+            ]
         if entity.dxftype() == "ARC":
-            return list(entity.vertices(16))
+            center = entity.dxf.center
+            radius = float(getattr(entity.dxf, "radius", 0))
+            if radius <= 0:
+                return None
+            start_angle = radians(getattr(entity.dxf, "start_angle", 0.0))
+            end_angle = radians(getattr(entity.dxf, "end_angle", 0.0))
+            if end_angle < start_angle:
+                end_angle += tau
+            steps = 48
+            return [
+                (
+                    float(center.x + radius * cos(start_angle + (end_angle - start_angle) * i / steps)),
+                    float(center.y + radius * sin(start_angle + (end_angle - start_angle) * i / steps)),
+                )
+                for i in range(steps + 1)
+            ]
         if entity.dxftype() == "ELLIPSE":
-            return list(entity.vertices(32))
+            return None
         if entity.dxftype() == "SPLINE":
-            return list(entity.flattening(1, 16))
+            return None
         if hasattr(entity, "vertices"):
-            return [v.dxf.location.vec2 for v in entity.vertices]
+            return [_vec2_to_tuple(v.dxf.location.vec2) for v in entity.vertices]
         return None
 
 
@@ -250,7 +323,7 @@ if CAD_STACK_AVAILABLE:
         transformed: list[ParsedEntity] = []
         for entity in revised_entities:
             new_vertices = [transform.transform(Vec3(x, y, 0)).vec2 for x, y in entity.vertices]
-            transformed.append(ParsedEntity(entity.entity_id, entity.entity_type, new_vertices))
+            transformed.append(replace(entity, vertices=new_vertices))
         return transformed
 
 

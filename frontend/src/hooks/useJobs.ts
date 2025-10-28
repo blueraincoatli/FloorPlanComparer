@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 
-import type { ApiJobSummary, DiffPayload, JobSummary } from "../types/jobs";
+import type { ApiJobSummary, DiffPayload, JobSummary, StoredFile } from "../types/jobs";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000/api";
 
@@ -15,6 +15,7 @@ type JobsHookState = {
   isUploading: boolean;
   uploadError: string | null;
   uploadSuccess: string | null;
+  jobReports: StoredFile[];
 };
 
 type UploadParams = {
@@ -34,6 +35,7 @@ export function useJobs() {
     isUploading: false,
     uploadError: null,
     uploadSuccess: null,
+    jobReports: [],
   });
 
   const refreshJobs = useCallback(async () => {
@@ -63,6 +65,7 @@ export function useJobs() {
           selectedJobId,
           diffPayload: selectedJobId ? prev.diffPayload : null,
           diffError: selectedJobId ? prev.diffError : null,
+          jobReports: selectedJobId ? prev.jobReports : [],
         };
       });
     } catch (error) {
@@ -72,17 +75,39 @@ export function useJobs() {
   }, []);
 
   const fetchDiff = useCallback(async (jobId: string) => {
-    setState((prev) => ({ ...prev, isLoadingDiff: true, diffError: null }));
+    setState((prev) => ({ ...prev, isLoadingDiff: true, diffError: null, jobReports: [] }));
     try {
-      const response = await fetch(`${API_BASE_URL}/jobs/${jobId}/diff`);
-      if (!response.ok) {
-        throw new Error(`无法获取差异：${response.status}`);
+      const [diffResponse, statusResponse] = await Promise.all([
+        fetch(`${API_BASE_URL}/jobs/${jobId}/diff`),
+        fetch(`${API_BASE_URL}/jobs/${jobId}`),
+      ]);
+
+      if (!diffResponse.ok) {
+        throw new Error(`无法获取差异：${diffResponse.status}`);
       }
-      const body = await response.json();
-      setState((prev) => ({ ...prev, diffPayload: body?.data ?? null, isLoadingDiff: false }));
+
+      const diffBody = await diffResponse.json();
+      let reports: StoredFile[] = [];
+      if (statusResponse.ok) {
+        const statusBody = await statusResponse.json();
+        reports = statusBody?.data?.reports ?? [];
+      }
+
+      setState((prev) => ({
+        ...prev,
+        diffPayload: diffBody?.data ?? null,
+        isLoadingDiff: false,
+        jobReports: reports,
+      }));
     } catch (error) {
       const message = error instanceof Error ? error.message : "加载差异时发生错误";
-      setState((prev) => ({ ...prev, diffPayload: null, diffError: message, isLoadingDiff: false }));
+      setState((prev) => ({
+        ...prev,
+        diffPayload: null,
+        diffError: message,
+        isLoadingDiff: false,
+        jobReports: [],
+      }));
     }
   }, []);
 
@@ -163,6 +188,7 @@ export function useJobs() {
     isUploading: state.isUploading,
     uploadError: state.uploadError,
     uploadSuccess: state.uploadSuccess,
+    jobReports: state.jobReports,
     refreshJobs,
     selectJob,
     uploadFiles,

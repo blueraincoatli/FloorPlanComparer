@@ -48,8 +48,14 @@ async def test_create_job_persists_files_and_metadata(storage_root):
     steps = {entry["step"] for entry in metadata.logs}
     assert {"convert", "extract", "match"}.issubset(steps)
     assert metadata.reports, "expected at least one generated report"
-    report_path = Path(metadata.reports[0].path)
-    assert report_path.exists()
+    diff_report = next((report for report in metadata.reports if report.kind == "diff"), None)
+    pdf_report = next((report for report in metadata.reports if report.kind == "pdf_overlay"), None)
+    assert diff_report is not None
+    assert pdf_report is not None
+    diff_path = Path(diff_report.path)
+    pdf_path = Path(pdf_report.path)
+    assert diff_path.exists()
+    assert pdf_path.exists()
 
     stored_path = Path(metadata.original_files[0].path)
     assert stored_path.exists()
@@ -140,3 +146,23 @@ async def test_get_job_diff_returns_payload(storage_root):
     assert len(diff_payload["entities"]) > 0
     first_entity = diff_payload["entities"][0]
     assert "polygon" in first_entity
+
+
+@pytest.mark.asyncio
+async def test_download_pdf_artefact_returns_file(storage_root):
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.post(
+            "/api/jobs",
+            files={
+                "original_dwg": ("sample_a.dwg", b"alpha", "application/dwg"),
+                "revised_dwg": ("sample_b.dwg", b"beta", "application/dwg"),
+            },
+        )
+        job_id = resp.json()["data"]["job_id"]
+
+        artefact_resp = await client.get(f"/api/jobs/{job_id}/artefacts/pdf-overlay")
+
+    assert artefact_resp.status_code == 200
+    assert artefact_resp.headers["content-type"].startswith("application/pdf")
+    assert artefact_resp.content

@@ -9,16 +9,28 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 .mypy_cache/
+.coverage
+coverage/**
+*.log
+*.cache
 
 # Editor
 .vscode/
 .idea/
+.claude/
 
 # Build outputs
 dist/
 build/
 frontend/dist/
 frontend/node_modules/
+frontend/.vite/
+
+# Runtime artefacts
+node_modules/
+.env
+.env.*
+.debug-storage/
 
 # Application storage
 storage/
@@ -30,3 +42,4 @@ ehthumbs.db
 .DS_Store
 originFile/
 *.msi 
+temp/

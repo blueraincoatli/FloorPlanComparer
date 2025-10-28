@@ -31,6 +31,22 @@ export type DiffEntity = {
   polygon: DiffPolygon;
 };
 
+export type StoredFile = {
+  name: string;
+  path: string;
+  size: number;
+  checksum: string;
+  content_type?: string | null;
+  kind?: string | null;
+};
+
+export type JobStatusData = {
+  job_id: string;
+  status: string;
+  progress: number;
+  reports: StoredFile[];
+};
+
 export type DiffSummary = {
   added: number;
   removed: number;

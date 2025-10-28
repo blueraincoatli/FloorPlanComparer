@@ -2,6 +2,7 @@
 
 from .jobs import JobService
 from .parsing import ParsedEntity, match_entities, normalize_entities_by_grid, parse_dxf
+from .reports import render_diff_pdf
 
 __all__ = [
     "JobService",
@@ -9,4 +10,5 @@ __all__ = [
     "match_entities",
     "normalize_entities_by_grid",
     "parse_dxf",
+    "render_diff_pdf",
 ]

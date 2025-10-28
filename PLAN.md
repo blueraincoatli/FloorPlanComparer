@@ -379,3 +379,96 @@ export function ViewerCanvas({ originalGeometry, revisedGeometry, activeFilters,
 4. Improve Celery error reporting and retries so the API can expose failed/terminal states with meaningful messages instead of stuck `processing` jobs.
 5. Clean the repo: remove `node_modules`, `dist`, `.venv`, and installer binaries from version control and tighten `.gitignore` plus contributor docs.
 6. Split the React UI into Upload/List/Diff/Summary components and define an async status contract (polling or WebSocket) with the backend.
+
+## 11. 2025-10-26 PDF 叠加差异方案计划
+### 目标
+为每个比对任务生成一份矢量 PDF，叠加原图、改图及差异高亮层，并在前端提供预览/下载入口，以解决 SVG 渲染大量 CAD 实体的可视化问题。
+
+### 阶段一：后端数据扩展
+1. 扫描已有 DXF 实体，定义图层/对象过滤策略（优先保留主要建筑轮廓、墙体、门窗等），并确定对齐基准（坐标或特定图层）。
+2. 在 `parse_dxf` 输出结构内保留原始实体的坐标、图层、颜色等元数据；diff 结果额外携带实体来源（original/revised）。
+3. 若 `normalize_entities_by_grid` 成功识别参考网格，则统一应用缩放/平移，确保原图与改图坐标可直接叠加。
+
+### 阶段二：PDF 渲染服务
+1. 评估 ODA File Converter 的 PDF 输出能力；若支持则组合成批处理命令生成单独的原图/改图 PDF。
+2. 若 ODA 无法满足叠图需求，使用 cairo/PyMuPDF/ReportLab 等库手工绘制多边形；实现：
+   - 背景层（原图）使用浅灰描边；改图使用浅蓝；新增实体绿色填充；删除实体红色填充；
+   - 支持多页（原图、改图、叠加）或单页合成。
+3. 将 PDF 输出写入 `reports/`，在 Job metadata 中登记，并记录生成日志。
+
+### 阶段三：前端集成
+1. 在 `DiffViewer` 中新增“打开 PDF 差异报告”按钮，优先尝试内嵌 `<iframe>` 预览，不支持时提供下载。
+2. 在全屏视图添加同样入口，并展示生成时间、文件大小等信息。
+3. 若 PDF 暂未生成（例如任务旧数据），界面提示“差异报告生成中/不可用”，可触发后台补算。
+
+### 阶段四：验证与优化
+1. 使用 `originFile` 中的样例 DWG 生成 PDF，并人工检查叠图是否对齐、颜色是否清晰。
+2. 记录耗时与输出体积，评估是否需要对实体过滤、抽稀或分页。
+3. 编写最小化集成测试（至少覆盖任务完成后 PDF 是否存在、API 是否返回下载链接）。
+
+---
+
+## 12. 2025-10-27 DWG → DXF → PDF 差异叠加方案规划
+
+### 目标
+仅要求用户上传 DWG，即可自动输出一份叠加原图、改图及差异高亮的矢量 PDF；同时保留现有差异 JSON 供前端或其他系统使用。
+
+### 流程概览
+1. DWG → DXF：使用现有 ODA Converter 脚本，确保统一版本（如 ACAD2018）。
+2. DXF → 中间几何模型：调用 `parse_dxf`，获取实体坐标、图层、颜色、来源（original/revised）。
+3. 对齐：利用 `normalize_entities_by_grid` 或图层/图框信息，对 revised 坐标进行仿射变换，使两版图纸在同一坐标系下重合。
+4. 差异标注：沿用 `match_entities` 结果，把新增、删除实体分组；记录其顶点信息和风格。
+5. PDF 绘制：使用 `reportlab`（或 cairo）渲染背景图层和差异层，按页输出。
+6. 报告注册：写入 `storage/jobs/<job_id>/reports/diff-overlay.pdf`，并在 job metadata 中登记；前端露出“查看 PDF 差异报告”。
+
+### 详细任务拆分
+
+#### 阶段 1：对齐与数据准备
+1. **归一化改进**：增强 `_find_grid_axes`，如果识别轴网失败，则回退到基于主体包围盒的平移/缩放对齐。
+2. **图层过滤策略**：
+   - 定义默认保留图层（如 `WALL`, `AXIS`, `DIM`, `TEXT` 等），提供配置项；
+   - 支持“强制包含差异实体”确保 diff 输出必然可见；
+   - 可选：统计图层数量，生成调试日志供调优。
+3. **实体标准化**：新增工具函数，将 DXF 的坐标单位换算成 PDF 坐标（例如 mm 或 inch），统一变换矩阵（translation + rotation + scaling）。
+4. **色彩与风格表**：预设背景线条和差异高亮颜色，使用 RGBA 或透明度参数存储于配置。
+
+#### 阶段 2：PDF 渲染引擎
+1. **基础绘制**：实现 `render_pdf(job, entities)`：
+   - 初始化 `reportlab.pdfgen.canvas.Canvas`；
+   - 根据实体包围盒设置页面尺寸与坐标系（翻转 y 轴以符合图纸方向）；
+   - 绘制背景层（原图浅灰）；
+   - 绘制改图（浅蓝或其他颜色）；
+   - 对于差异实体，使用绿色（新增）/红色（删除）填充或描边；
+   - 文字/尺寸可用灰色，以免遮挡差异。
+2. **分页策略**：可输出三页：
+   - 页 1：原图（浅灰）；
+   - 页 2：改图；
+   - 页 3：叠加 + 差异高亮；
+   或者单页叠加（根据需求配置）。
+3. **性能优化**：
+   - 批量绘制线段/多段线，提前缓存 Path 对象；
+   - 对大量实体可进行抽稀（例如对很多短线段的图层降低渲染细粒度）。
+
+#### 阶段 3：管线集成
+1. 在后端任务 (`convert_job_task`) 完成 DXF 解析后，调用 `render_diff_pdf` 生成 PDF，写入 `reports`。
+2. 补充 metadata 字段 `reports`: 包含 PDF 的路径、大小、生成时间。
+3. 若渲染失败（如 ReportLab 缺失字体），记录日志并允许任务完成但标明 PDF 不可用。
+
+#### 阶段 4：前端支持
+1. `DiffViewer` / `FullScreenView` 增加“打开 PDF 差异报告”按钮，优先 iframe 内嵌，兼容下载。
+2. 若 PDF 尚未生成，展示“暂未生成”提示并支持人工触发重算（可调用后台补算接口）。
+
+#### 阶段 5：验证与调优
+1. 使用 `originFile` 内 DWG 验证输出 PDF 的对齐与颜色，比如墙体重合度、差异高亮是否直观。
+2. 收集 PDF 大小与生成时长；如果太大，考虑压缩、抽稀或分块渲染。
+3. 编写单元测试/集成测试：
+   - DXF 解析后实体数据结构完整；
+   - PDF 文件成功生成且被记录在 job metadata 中；
+   - 前端接口可访问生成的 PDF。
+
+### 可选增强
+- 对外提供 JSON 配置项：允许自定义图层颜色、透明度、是否显示文字等。
+- 为 PDF 增加差异图例（在页脚列出颜色说明）。
+- 如果需要交互，可额外生成 SVG 叠加层，但仍以 PDF 作为主报告。
+
+---

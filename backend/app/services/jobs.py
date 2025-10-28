@@ -63,11 +63,19 @@ class JobService:
         """Convert metadata into the public status payload."""
 
         job = self.load_job(job_id)
+        last_error: str | None = None
+        for entry in reversed(job.logs):
+            if entry.get("level") == "error" or entry.get("status") == "failed":
+                last_error = entry.get("error") or entry.get("details") or entry.get("message")
+                if last_error:
+                    break
         return JobStatusPayload(
             job_id=job.job_id,
             status=job.status,
             progress=job.progress,
             reports=job.reports,
+            logs=job.logs,
+            last_error=last_error,
         )
 
     def list_jobs(self, *, limit: int = 20, offset: int = 0) -> tuple[int, list[JobMetadata]]:
@@ -112,6 +120,25 @@ class JobService:
         if not path.exists():
             raise FileNotFoundError(f"diff file missing for job {job_id}")
         return JobDiffPayload.model_validate_json(path.read_text(encoding="utf-8"))
+
+    def get_report_file(self, job_id: str, kind: str) -> StoredFile:
+        """Return a stored report file for the given kind."""
+
+        job = self.load_job(job_id)
+        normalized_kind = kind.lower().replace("-", "_")
+
+        for report in job.reports:
+            if report.kind and report.kind.lower() == normalized_kind:
+                return report
+
+        for report in job.reports:
+            name = report.name.lower()
+            if name == normalized_kind:
+                return report
+            if name.startswith(f"{normalized_kind}.") or name.endswith(f".{normalized_kind}"):
+                return report
+
+        raise FileNotFoundError(f"report '{kind}' not found for job {job_id}")
 
     def save_metadata(self, metadata: JobMetadata) -> JobMetadata:
         """Write metadata to disk and return the model."""

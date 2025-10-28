@@ -46,6 +46,8 @@ class JobStatusPayload(BaseModel):
     status: Literal["queued", "processing", "completed", "failed"] = Field(description="Current job status")
     progress: float = Field(ge=0.0, le=1.0, description="Job progress between 0 and 1")
     reports: list[StoredFile] = Field(default_factory=list, description="Downloadable report files")
+    logs: list[dict[str, Any]] = Field(default_factory=list, description="Timeline of workflow events")
+    last_error: str | None = Field(default=None, description="Most recent error message, if any")
 
 
 class JobSummary(BaseModel):
