@@ -6,6 +6,8 @@ import { ProcessSteps } from "./components/ProcessSteps";
 import { UploadForm } from "./components/UploadForm";
 import EnhancedUploadForm from "./components/EnhancedUploadForm";
 import DWGConverter from "./components/DWGConverter";
+import ModernDWGConverter from "./components/ModernDWGConverter";
+import MaterialLayout from "./components/MaterialLayout";
 import { useJobs } from "./hooks/useJobs";
 import type { UploadHint } from "./types/jobs";
 
@@ -53,63 +55,32 @@ export default function App() {
   };
 
   return (
-    <div className="layout">
-      <header className="header">
-        <h1>Floor Plan Comparer</h1>
-        <p>平面图处理工具：文件比对、DWG转换、智能分析。</p>
-        <div style={{ marginTop: '10px' }}>
-          <button
-            onClick={() => setMode('standard')}
-            style={{
-              padding: '5px 10px',
-              backgroundColor: mode === 'standard' ? '#1890ff' : '#f0f0f0',
-              color: mode === 'standard' ? 'white' : 'black',
-              border: '1px solid #d9d9d9',
-              borderRadius: '4px 0 0 4px',
-              cursor: 'pointer',
-              marginRight: '1px'
-            }}
-          >
-            标准比对
-          </button>
-          <button
-            onClick={() => setMode('converter')}
-            style={{
-              padding: '5px 10px',
-              backgroundColor: mode === 'converter' ? '#52c41a' : '#f0f0f0',
-              color: mode === 'converter' ? 'white' : 'black',
-              border: '1px solid #d9d9d9',
-              borderRadius: '0',
-              cursor: 'pointer',
-              marginLeft: '1px',
-              marginRight: '1px'
-            }}
-          >
-            DWG转换
-          </button>
-          <button
-            onClick={() => setMode('enhanced')}
-            style={{
-              padding: '5px 10px',
-              backgroundColor: mode === 'enhanced' ? '#722ed1' : '#f0f0f0',
-              color: mode === 'enhanced' ? 'white' : 'black',
-              border: '1px solid #d9d9d9',
-              borderRadius: '0 4px 4px 0',
-              cursor: 'pointer',
-              marginLeft: '1px'
-            }}
-          >
-            增强比对
-          </button>
-        </div>
-      </header>
-
-      <main className="content">
-        {mode === 'converter' ? (
-          <DWGConverter onJobCreated={handleJobCreated} />
-        ) : mode === 'enhanced' ? (
+    <MaterialLayout
+      selectedMode={mode}
+      onModeChange={(newMode) => setMode(newMode)}
+    >
+      {mode === 'converter' ? (
+        <ModernDWGConverter onJobCreated={handleJobCreated} />
+      ) : mode === 'enhanced' ? (
+        <div>
+          <Alert
+            message="增强比对模式"
+            description="此模式使用 AutoCAD 进行高级 DWG 文件比对，提供更精确的差异化分析。"
+            type="info"
+            showIcon
+            style={{ marginBottom: 24 }}
+          />
           <EnhancedUploadForm onJobCreated={handleJobCreated} />
-        ) : (
+        </div>
+      ) : (
+        <div>
+          <Alert
+            message="标准比对模式"
+            description="传统的 DWG 文件差异比对功能，适用于基本的图纸比较需求。"
+            type="info"
+            showIcon
+            style={{ marginBottom: 24 }}
+          />
           <UploadForm
             onSubmit={uploadFiles}
             isUploading={isUploading}
@@ -117,10 +88,11 @@ export default function App() {
             success={uploadSuccess}
             onFeedbackClear={clearUploadFeedback}
           />
-        )}
+        </div>
+      )}
 
-        <ProcessSteps hints={hints} activeIndex={activeIndex} onSelect={(index) => setActiveIndex(index)} />
-
+      {/* 任务列表 */}
+      <Card title="任务历史" style={{ marginTop: 24 }}>
         <JobsTable
           jobs={jobs}
           isLoading={isLoadingJobs}
@@ -129,25 +101,20 @@ export default function App() {
           onRefresh={() => void refreshJobs()}
           onSelect={selectJob}
         />
+      </Card>
 
-        <DiffViewer
-          jobId={selectedJobId}
-          payload={diffPayload}
-          isLoading={isLoadingDiff}
-          error={diffError}
-          reports={jobReports}
-        />
-
-        <section className="panel">
-          <h2>下一步</h2>
-          <p>继续完善任务详情页、批量导出与权限控制，以支撑真实场景。</p>
-          <p>
-            若需自定义 API 地址，可在前端目录创建 <code>.env</code> 并设置 <code>VITE_API_BASE_URL</code>。
-          </p>
-        </section>
-      </main>
-
-      <footer className="footer">© {new Date().getFullYear()} Floor Plan Comparer</footer>
-    </div>
+      {/* 差异查看器 */}
+      {selectedJobId && (
+        <Card title="差异分析结果" style={{ marginTop: 24 }}>
+          <DiffViewer
+            jobId={selectedJobId}
+            payload={diffPayload}
+            isLoading={isLoadingDiff}
+            error={diffError}
+            reports={jobReports}
+          />
+        </Card>
+      )}
+    </MaterialLayout>
   );
 }
