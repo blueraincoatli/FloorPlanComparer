@@ -159,6 +159,9 @@ const DWGConverter: React.FC<DWGConverterProps> = ({ onJobCreated }) => {
     if (analyzedParams.monochrome) {
       params.push(<Tag color="black">黑白</Tag>);
     }
+    if (analyzedParams.layers && analyzedParams.layers.length > 0) {
+      params.push(<Tag color="cyan">图层: {analyzedParams.layers.join('、')}</Tag>);
+    }
 
     return (
       <Card size="small" title={<><SettingOutlined /> 转换参数</>}>
@@ -204,6 +207,7 @@ const DWGConverter: React.FC<DWGConverterProps> = ({ onJobCreated }) => {
                 <li>我需要A3大小的PDF，黑白打印</li>
                 <li>转换成灰度图，居中显示</li>
                 <li>自动适应页面，留出10mm边距</li>
+                <li>只导出"墙体"和"门窗"图层</li>
                 <li>需要高清彩色PDF输出</li>
               </ul>
 

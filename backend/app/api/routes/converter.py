@@ -43,7 +43,8 @@ def analyze_natural_language_request(user_request: str) -> Dict[str, Any]:
         "paper_size": None,
         "margin": None,
         "grayscale": False,
-        "monochrome": False
+        "monochrome": False,
+        "layers": None  # List of specific layers to export
     }
 
     # Convert to lowercase for easier matching
@@ -109,6 +110,32 @@ def analyze_natural_language_request(user_request: str) -> Dict[str, Any]:
         # Could be used for future quality parameter
         pass
 
+    # Layer extraction detection
+    layer_patterns = [
+        r'只导出["\']?([^"\']+)["\']?图层',  # "只导出"墙体"图层"
+        r'导出["\']?([^"\']+)["\']?图层',   # "导出"墙体"图层"
+        r'图层["\']?([^"\']+)["\']?',      # "图层"墙体""
+        r'layer["\']?([^"\']+)["\']?',    # "layer"walls""
+        r'仅包含["\']?([^"\',]+)["\']?(?:和|及|与|["\']?\s*["\']?)(["\']?([^"\',]+)["\']?)\s*图层',  # "仅包含"墙体"和"门窗"图层"
+    ]
+
+    detected_layers = []
+    for pattern in layer_patterns:
+        matches = re.findall(pattern, request_lower, re.IGNORECASE)
+        for match in matches:
+            if isinstance(match, tuple):
+                # Handle tuple from the last pattern (multiple layers)
+                for layer in match:
+                    if layer and layer.strip():
+                        detected_layers.append(layer.strip().strip('"\''))
+            else:
+                if match and match.strip():
+                    detected_layers.append(match.strip().strip('"\''))
+
+    # Remove duplicates
+    if detected_layers:
+        params["layers"] = list(set(detected_layers))
+
     return params
 
 def generate_requirements_summary(params: Dict[str, Any], user_request: str) -> str:
@@ -141,6 +168,10 @@ def generate_requirements_summary(params: Dict[str, Any], user_request: str) -> 
 
     if params.get("center"):
         summaries.append("对齐: 居中")
+
+    if params.get("layers"):
+        layer_names = "、".join(params["layers"])
+        summaries.append(f"图层: {layer_names}")
 
     return "，".join(summaries) if summaries else "使用默认设置"
 
