@@ -66,8 +66,8 @@ async def process_dwg_files(
             status=JobStatus.PENDING
         )
         
-        job_service = JobService()
-        job = job_service.create_job(job_data)
+        job_service = JobService(Path("storage"))
+        job = job_service.create_job_from_data(job_data)
         
         # Start processing task
         process_dwg_files_with_autocad.delay(job_id, str(origin_path), str(target_path))
@@ -87,14 +87,11 @@ async def get_enhanced_job_status(job_id: str):
     :return: Job status and results
     """
     try:
-        job_service = JobService()
-        job = job_service.get_job(job_id)
-        
-        if not job:
-            raise HTTPException(status_code=404, detail="Job not found")
-        
+        job_service = JobService(Path("storage"))
+        job = job_service.load_job(job_id)
+
         # Get task result if completed
-        if job.status == JobStatus.COMPLETED:
+        if job.status == "completed":
             # Return job details with results
             return job
             

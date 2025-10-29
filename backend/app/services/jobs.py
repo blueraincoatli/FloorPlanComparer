@@ -10,7 +10,7 @@ from typing import Any
 
 from fastapi import UploadFile
 
-from app.models.jobs import JobDiffPayload, JobMetadata, JobStatusPayload, StoredFile
+from app.models.jobs import JobCreate, JobDiffPayload, JobMetadata, JobStatusPayload, StoredFile
 
 CHUNK_SIZE = 1024 * 1024
 
@@ -50,6 +50,25 @@ class JobService:
             updated_at=now,
             original_files=[original_file],
             revised_files=[revised_file],
+        )
+        self._write_metadata(metadata)
+        return metadata
+
+    def create_job_from_data(self, job_data: JobCreate) -> JobMetadata:
+        """Create job metadata from JobCreate data (for enhanced jobs)."""
+
+        job_dir = self._jobs_dir / job_data.id
+        job_dir.mkdir(parents=True, exist_ok=True)
+
+        now = datetime.now(timezone.utc)
+        metadata = JobMetadata(
+            job_id=job_data.id,
+            status=job_data.status.value,
+            progress=0.0,
+            created_at=now,
+            updated_at=now,
+            original_files=[],  # Will be populated when files are saved
+            revised_files=[],
         )
         self._write_metadata(metadata)
         return metadata

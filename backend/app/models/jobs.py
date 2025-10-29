@@ -1,9 +1,27 @@
 from __future__ import annotations
 
 from datetime import datetime
+from enum import Enum
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field
+
+
+class JobStatus(Enum):
+    """Job status enumeration"""
+    PENDING = "pending"
+    QUEUED = "queued"
+    PROCESSING = "processing"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+
+class JobCreate(BaseModel):
+    """Job creation request model"""
+    id: str = Field(description="Unique job identifier")
+    origin_filename: str = Field(description="Original DWG filename")
+    target_filename: str = Field(description="Target DWG filename")
+    status: JobStatus = Field(description="Initial job status")
 
 
 class StoredFile(BaseModel):

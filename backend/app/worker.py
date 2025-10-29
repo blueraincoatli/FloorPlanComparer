@@ -13,7 +13,7 @@ def create_celery_app() -> Celery:
         "floorplan_backend",
         broker=settings.celery_broker_url,
         backend=settings.celery_result_backend,
-        include=["app.tasks.jobs"],
+        include=["app.tasks.jobs", "app.tasks.enhanced_jobs"],
     )
     app.conf.update(
         task_always_eager=settings.celery_task_always_eager,
