@@ -5,6 +5,7 @@ import { JobsTable } from "./components/JobsTable";
 import { ProcessSteps } from "./components/ProcessSteps";
 import { UploadForm } from "./components/UploadForm";
 import EnhancedUploadForm from "./components/EnhancedUploadForm";
+import DWGConverter from "./components/DWGConverter";
 import { useJobs } from "./hooks/useJobs";
 import type { UploadHint } from "./types/jobs";
 
@@ -25,7 +26,7 @@ const hints: UploadHint[] = [
 
 export default function App() {
   const [activeIndex, setActiveIndex] = useState(0);
-  const [enhancedMode, setEnhancedMode] = useState(false);
+  const [mode, setMode] = useState<'standard' | 'enhanced' | 'converter'>('standard');
   const {
     jobs,
     isLoadingJobs,
@@ -55,26 +56,58 @@ export default function App() {
     <div className="layout">
       <header className="header">
         <h1>Floor Plan Comparer</h1>
-        <p>平面图差异比对的端到端工具。</p>
+        <p>平面图处理工具：文件比对、DWG转换、智能分析。</p>
         <div style={{ marginTop: '10px' }}>
-          <button 
-            onClick={() => setEnhancedMode(!enhancedMode)}
-            style={{ 
-              padding: '5px 10px', 
-              backgroundColor: enhancedMode ? '#1890ff' : '#f0f0f0',
-              color: enhancedMode ? 'white' : 'black',
+          <button
+            onClick={() => setMode('standard')}
+            style={{
+              padding: '5px 10px',
+              backgroundColor: mode === 'standard' ? '#1890ff' : '#f0f0f0',
+              color: mode === 'standard' ? 'white' : 'black',
               border: '1px solid #d9d9d9',
-              borderRadius: '4px',
-              cursor: 'pointer'
+              borderRadius: '4px 0 0 4px',
+              cursor: 'pointer',
+              marginRight: '1px'
             }}
           >
-            {enhancedMode ? '切换到标准模式' : '切换到增强模式'}
+            标准比对
+          </button>
+          <button
+            onClick={() => setMode('converter')}
+            style={{
+              padding: '5px 10px',
+              backgroundColor: mode === 'converter' ? '#52c41a' : '#f0f0f0',
+              color: mode === 'converter' ? 'white' : 'black',
+              border: '1px solid #d9d9d9',
+              borderRadius: '0',
+              cursor: 'pointer',
+              marginLeft: '1px',
+              marginRight: '1px'
+            }}
+          >
+            DWG转换
+          </button>
+          <button
+            onClick={() => setMode('enhanced')}
+            style={{
+              padding: '5px 10px',
+              backgroundColor: mode === 'enhanced' ? '#722ed1' : '#f0f0f0',
+              color: mode === 'enhanced' ? 'white' : 'black',
+              border: '1px solid #d9d9d9',
+              borderRadius: '0 4px 4px 0',
+              cursor: 'pointer',
+              marginLeft: '1px'
+            }}
+          >
+            增强比对
           </button>
         </div>
       </header>
 
       <main className="content">
-        {enhancedMode ? (
+        {mode === 'converter' ? (
+          <DWGConverter onJobCreated={handleJobCreated} />
+        ) : mode === 'enhanced' ? (
           <EnhancedUploadForm onJobCreated={handleJobCreated} />
         ) : (
           <UploadForm
