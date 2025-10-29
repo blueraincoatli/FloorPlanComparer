@@ -64,7 +64,18 @@ const DWGConverter: React.FC<DWGConverterProps> = ({ onJobCreated }) => {
   // 分析自然语言需求
   const analyzeUserRequest = async () => {
     if (!userRequest.trim()) {
-      message.warning('请描述您的转换需求');
+      // 如果用户没有输入需求，使用默认参数
+      const defaultParams = {
+        auto_fit: true,
+        center: true,
+        paper_size: null,
+        margin: null,
+        grayscale: false,
+        monochrome: false,
+        layers: null
+      };
+      setAnalyzedParams(defaultParams);
+      message.info('使用默认转换参数');
       return;
     }
 
@@ -201,7 +212,7 @@ const DWGConverter: React.FC<DWGConverterProps> = ({ onJobCreated }) => {
           <Card size="small" title={<><RobotOutlined /> 第二步：描述转换需求</>}>
             <Space direction="vertical" style={{ width: '100%' }}>
               <Paragraph>
-                请用自然语言描述您的转换需求，例如：
+                请用自然语言描述您的转换需求，留空则使用默认设置：
               </Paragraph>
               <ul>
                 <li>我需要A3大小的PDF，黑白打印</li>
@@ -225,9 +236,8 @@ const DWGConverter: React.FC<DWGConverterProps> = ({ onJobCreated }) => {
                 icon={<RobotOutlined />}
                 onClick={analyzeUserRequest}
                 loading={isAnalyzing}
-                disabled={!userRequest.trim()}
               >
-                {isAnalyzing ? '分析中...' : '分析需求'}
+                {isAnalyzing ? '分析中...' : (userRequest.trim() ? '分析需求' : '使用默认设置')}
               </Button>
             </Space>
           </Card>
