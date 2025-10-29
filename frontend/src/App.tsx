@@ -4,7 +4,7 @@ import { DiffViewer } from "./components/DiffViewer";
 import { JobsTable } from "./components/JobsTable";
 import { ProcessSteps } from "./components/ProcessSteps";
 import { UploadForm } from "./components/UploadForm";
-import { EnhancedUploadForm } from "./components/EnhancedUploadForm";
+import EnhancedUploadForm from "./components/EnhancedUploadForm";
 import { useJobs } from "./hooks/useJobs";
 import type { UploadHint } from "./types/jobs";
 
