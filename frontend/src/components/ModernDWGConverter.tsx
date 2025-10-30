@@ -71,7 +71,7 @@ const ModernDWGConverter: React.FC<ModernDWGConverterProps> = ({ onJobCreated })
 
       setIsAnalyzing(true);
       try {
-        const response = await axios.post('/api/enhanced/analyze-request', {
+        const response = await axios.post('/api/converter/analyze-request', {
           request: userRequest
         });
 
@@ -119,7 +119,7 @@ const ModernDWGConverter: React.FC<ModernDWGConverterProps> = ({ onJobCreated })
       formData.append('dwg_file', dwgFile);
       formData.append('params', JSON.stringify(analyzedParams));
 
-      const response = await axios.post('/api/enhanced/convert-dwg', formData, {
+      const response = await axios.post('/api/converter/convert-dwg', formData, {
         headers: {
           'Content-Type': 'multipart/form-data',
         },
