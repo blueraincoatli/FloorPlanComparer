@@ -38,7 +38,32 @@ export function useJobs() {
     jobReports: [],
   });
 
+  // 检查API是否可用的辅助函数
+  const checkApiAvailability = useCallback(async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/health`, {
+        method: 'GET',
+        cache: 'no-cache'
+      });
+      return response.ok;
+    } catch (error) {
+      console.warn('API不可用:', error);
+      return false;
+    }
+  }, []);
+
   const refreshJobs = useCallback(async () => {
+    // 检查API是否可用
+    const isApiAvailable = await checkApiAvailability();
+    if (!isApiAvailable) {
+      setState((prev) => ({ 
+        ...prev, 
+        jobsError: "后端服务未启动，请先启动后端服务", 
+        isLoadingJobs: false 
+      }));
+      return;
+    }
+
     setState((prev) => ({ ...prev, isLoadingJobs: true, jobsError: null }));
     try {
       const response = await fetch(`${API_BASE_URL}/jobs?limit=10&offset=0`);
@@ -69,12 +94,24 @@ export function useJobs() {
         };
       });
     } catch (error) {
-      const message = error instanceof Error ? error.message : "无法获取任务列表";
+      const message = error instanceof Error ? error.message : "无法获取任务列表，请检查网络连接或后端服务";
       setState((prev) => ({ ...prev, jobsError: message, isLoadingJobs: false }));
     }
-  }, []);
+  }, [checkApiAvailability]);
 
   const fetchDiff = useCallback(async (jobId: string) => {
+    // 检查API是否可用
+    const isApiAvailable = await checkApiAvailability();
+    if (!isApiAvailable) {
+      setState((prev) => ({ 
+        ...prev, 
+        diffError: "后端服务未启动，请先启动后端服务", 
+        isLoadingDiff: false,
+        jobReports: [],
+      }));
+      return;
+    }
+
     setState((prev) => ({ ...prev, isLoadingDiff: true, diffError: null, jobReports: [] }));
     try {
       const [diffResponse, statusResponse] = await Promise.all([
@@ -100,7 +137,7 @@ export function useJobs() {
         jobReports: reports,
       }));
     } catch (error) {
-      const message = error instanceof Error ? error.message : "加载差异时发生错误";
+      const message = error instanceof Error ? error.message : "加载差异时发生错误，请检查网络连接或后端服务";
       setState((prev) => ({
         ...prev,
         diffPayload: null,
@@ -109,7 +146,7 @@ export function useJobs() {
         jobReports: [],
       }));
     }
-  }, []);
+  }, [checkApiAvailability]);
 
   const selectJob = useCallback(
     (jobId: string) => {
@@ -121,6 +158,17 @@ export function useJobs() {
 
   const uploadFiles = useCallback(
     async ({ original, revised }: UploadParams) => {
+      // 检查API是否可用
+      const isApiAvailable = await checkApiAvailability();
+      if (!isApiAvailable) {
+        setState((prev) => ({ 
+          ...prev, 
+          isUploading: false,
+          uploadError: "后端服务未启动，请先启动后端服务"
+        }));
+        return;
+      }
+
       setState((prev) => ({
         ...prev,
         isUploading: true,
@@ -158,7 +206,7 @@ export function useJobs() {
           selectJob(jobId);
         }
       } catch (error) {
-        const message = error instanceof Error ? error.message : "上传时发生未知错误";
+        const message = error instanceof Error ? error.message : "上传时发生未知错误，请检查网络连接或后端服务";
         setState((prev) => ({
           ...prev,
           isUploading: false,
@@ -166,7 +214,7 @@ export function useJobs() {
         }));
       }
     },
-    [refreshJobs, selectJob]
+    [refreshJobs, selectJob, checkApiAvailability]
   );
 
   const clearUploadFeedback = useCallback(() => {

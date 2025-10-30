@@ -14,7 +14,7 @@ type DiffCanvasProps = {
 export function DiffCanvas({
   entities,
   height = 360,
-  showLegend = true,
+  showLegend = false,  // 默认隐藏图例，简化UI
   className,
   showBackground = false,
   backgroundEntities,

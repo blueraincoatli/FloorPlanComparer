@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Console Test</title>
+</head>
+<body>
+    <h1>Console Test Page</h1>
+    <p>Open DevTools and check console</p>
+
+    <script>
+        // 检查控制台错误
+        console.log('Testing console...');
+
+        // 检查网络连接
+        fetch('http://localhost:5176')
+            .then(response => response.text())
+            .then(html => {
+                console.log('✅ Frontend server is accessible');
+
+                // 创建iframe来加载React应用
+                const iframe = document.createElement('iframe');
+                iframe.src = 'http://localhost:5176';
+                iframe.style.width = '100%';
+                iframe.style.height = '600px';
+                iframe.style.border = '1px solid #ccc';
+
+                iframe.onload = function() {
+                    console.log('✅ React app loaded in iframe');
+
+                    // 尝试访问iframe内的控制台错误
+                    try {
+                        const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
+                        console.log('✅ Can access iframe document');
+
+                        // 检查是否有React根元素
+                        const root = iframeDoc.getElementById('root');
+                        if (root) {
+                            console.log('✅ React root element found');
+                        } else {
+                            console.error('❌ React root element not found');
+                        }
+
+                        // 检查Ant Design样式是否加载
+                        const stylesheets = iframeDoc.querySelectorAll('link[rel="stylesheet"]');
+                        let hasAntd = false;
+                        stylesheets.forEach(sheet => {
+                            if (sheet.href.includes('antd')) {
+                                hasAntd = true;
+                            }
+                        });
+
+                        if (hasAntd) {
+                            console.log('✅ Ant Design styles loaded');
+                        } else {
+                            console.warn('⚠️ Ant Design styles not found');
+                        }
+
+                    } catch (e) {
+                        console.error('❌ Cannot access iframe content:', e);
+                    }
+                };
+
+                iframe.onerror = function() {
+                    console.error('❌ Failed to load React app');
+                };
+
+                document.body.appendChild(iframe);
+
+            })
+            .catch(error => {
+                console.error('❌ Frontend server not accessible:', error);
+            });
+
+        // 添加错误监听器
+        window.addEventListener('error', function(e) {
+            console.error('❌ Window error:', e.error);
+        });
+
+        window.addEventListener('unhandledrejection', function(e) {
+            console.error('❌ Unhandled promise rejection:', e.reason);
+        });
+    </script>
+</body>
+</html>
