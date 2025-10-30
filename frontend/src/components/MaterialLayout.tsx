@@ -17,14 +17,13 @@ import {
   FileSearchOutlined,
   SwapOutlined,
   SettingOutlined,
-  CompareOutlined,
+  DiffOutlined,
   BellOutlined,
   UserOutlined,
   InfoCircleOutlined,
-  GitHubOutlined,
   QuestionCircleOutlined
 } from '@ant-design/icons';
-import { FilePdf, Layers, Zap } from 'lucide-react';
+import { FileText, Layers, Zap, Github } from 'lucide-react';
 
 const { Header, Sider, Content } = Layout;
 const { Title, Text } = Typography;
@@ -46,14 +45,14 @@ const MaterialLayout: React.FC<MaterialLayoutProps> = ({
   const menuItems = [
     {
       key: 'standard',
-      icon: <CompareOutlined />,
+      icon: <DiffOutlined />,
       label: '标准比对',
       description: '传统DWG文件差异比对',
       color: '#1890ff'
     },
     {
       key: 'converter',
-      icon: <FilePdf size={18} />,
+      icon: <FileText size={18} />,
       label: 'DWG转换',
       description: '智能PDF转换，支持自然语言',
       color: '#52c41a'
@@ -91,7 +90,7 @@ const MaterialLayout: React.FC<MaterialLayoutProps> = ({
             <Avatar
               size="small"
               style={{ backgroundColor: '#1890ff' }}
-              icon={<CompareOutlined />}
+              icon={<DiffOutlined />}
             />
             <Title level={4} style={{ margin: 0, color: '#1890ff' }}>Floor Plan Pro</Title>
           </Space>
@@ -136,7 +135,7 @@ const MaterialLayout: React.FC<MaterialLayoutProps> = ({
                   fontSize: collapsed ? '18px' : '28px',
                   fontWeight: 'bold'
                 }}
-                icon={<CompareOutlined />}
+                icon={<DiffOutlined />}
               />
             </div>
             {!collapsed && (
@@ -159,13 +158,14 @@ const MaterialLayout: React.FC<MaterialLayoutProps> = ({
           onClick={handleMenuClick}
           style={{
             border: 'none',
-            padding: '16px 0'
+            padding: '16px 0',
+            overflow: 'visible'  // 防止菜单项被裁切
           }}
           items={menuItems.map(item => ({
             key: item.key,
             icon: <span style={{ color: item.color }}>{item.icon}</span>,
             label: (
-              <div>
+              <div style={{ padding: '8px 0' }}>  // 增加内边距防止裁切
                 <div style={{ fontWeight: 500 }}>{item.label}</div>
                 {!collapsed && (
                   <Text type="secondary" style={{ fontSize: '11px' }}>
@@ -222,7 +222,7 @@ const MaterialLayout: React.FC<MaterialLayoutProps> = ({
                     <Button type="text" size="small" icon={<QuestionCircleOutlined />} />
                   </Tooltip>
                   <Tooltip title="GitHub">
-                    <Button type="text" size="small" icon={<GitHubOutlined />} />
+                    <Button type="text" size="small" icon={<Github size={16} />} />
                   </Tooltip>
                   <Tooltip title="系统信息">
                     <Button type="text" size="small" icon={<InfoCircleOutlined />} />
@@ -302,7 +302,7 @@ const MaterialLayout: React.FC<MaterialLayoutProps> = ({
         <Content style={{
           margin: '24px',
           padding: '24px',
-          background: 'white',
+          background: '#f5f5f5',  // 改为浅灰色背景
           borderRadius: '12px',
           boxShadow: '0 4px 12px rgba(0,0,0,0.05)',
           minHeight: 'calc(100vh - 112px)'

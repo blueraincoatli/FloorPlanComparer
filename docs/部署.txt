@@ -1,0 +1,92 @@
+
+  ## 3. 部署步骤
+
+  ### 3.1 安装Python依赖
+  `powershell
+  # 进入backend目录
+  cd D:\FloorPlanComparer\backend
+
+  # 使用UV创建虚拟环境并安装依赖
+  uv venv
+  uv pip install -e .
+  uv pip install -e .[cad]
+  `
+
+  ### 3.2 验证AutoCAD连接
+  `powershell
+  # 测试AutoCAD COM接口
+  python -c "import win32com.client; acad = win32com.client.Dispatch('AutoCAD.Application');
+  print(f'Connected to AutoCAD: {acad.Version}')"
+  `
+
+  ### 3.3 启动后端服务
+  `powershell
+  # 启动后端服务
+  cd D:\FloorPlanComparer\backend
+  uv run uvicorn app.main:app --host 0.0.0.0 --port 8000
+  `
+
+  ### 3.4 启动前端（可选）
+  `powershell
+  # 进入前端目录并安装依赖
+  cd D:\FloorPlanComparer\frontend
+  npm install
+
+  # 启动前端开发服务器
+  npm run dev
+  `
+
+  ## 4. 验证部署
+
+  ### 4.1 运行测试脚本
+  `powershell
+  # 运行依赖检查
+  cd D:\FloorPlanComparer
+  python backend\scripts\check_deps.py
+
+  # 测试AutoCAD转换功能（需要准备测试DWG文件）
+  python -c "
+  from backend.app.modules.dwg_to_pdf.converter import DWGToPDFConverter
+  print('AutoCAD转换器导入成功')
+  "
+  `
+
+  ### 4.2 准备测试文件
+  - 准备一个简单的测试DWG文件（如D:\test.dwg）
+  - 使用AutoCAD创建一个包含基本图形的DWG文件
+
+  ## 5. 部署配置
+
+  ### 5.1 环境变量设置
+  在目标电脑上设置必要的环境变量（可选）：
+  `powershell
+  # 设置AutoCAD路径（如果需要指定）
+  set FLOORPLAN_CONVERTER_PATH=C:\Program Files\Autodesk\AutoCAD 2023\acad.exe
+  `
+
+  ### 5.2 生产部署（推荐）
+  对于生产环境，建议使用以下配置：
+  `powershell
+  # 后端服务
+  uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 4
+
+  # 或使用Gunicorn（需要额外安装）
+  pip install gunicorn
+  gunicorn app.main:app --workers 4 --worker-class uvicorn.workers.UvicornWorker --bind
+  0.0.0.0:8000
+  `
+
+  ## 6. 使用说明
+
+  部署完成后，用户可以通过以下方式使用增强功能：
+
+  1. 前端界面：访问前端界面，切换到"增强模式"来使用AutoCAD集成功能
+  2. API调用：直接使用/api/enhanced/端点进行DWG文件处理
+  3. 测试功能：使用测试脚本验证所有功能是否正常
+
+  ## 注意事项
+
+  1. AutoCAD许可证：确保目标电脑上有有效的AutoCAD许可证
+  2. 权限设置：确保应用有足够权限访问AutoCAD和文件系统
+  3. 防火墙：如果需要远程访问，确保端口（如8000）未被防火墙阻止
+  4. 性能：首次启动时可能需要一些时间来加载AutoCAD COM接口
