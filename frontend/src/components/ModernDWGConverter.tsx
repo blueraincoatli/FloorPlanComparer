@@ -1,10 +1,10 @@
-import React, { useState } from 'react';
-import { Upload, Button, Card, Typography, Space, message, Alert, Input } from 'antd';
-import { UploadOutlined, FilePdfOutlined, RobotOutlined } from '@ant-design/icons';
-import type { UploadFile, UploadProps } from "antd/es/upload/interface";
-import axios from 'axios';
-
-const { Title, Paragraph } = Typography;
+import React, { useState } from 'react';
+import { Upload, Button, Card, Typography, Space, message, Alert, Input } from 'antd';
+import { UploadOutlined, FilePdfOutlined, RobotOutlined } from '@ant-design/icons';
+import type { UploadFile, UploadProps } from "antd/es/upload/interface";
+import axios from 'axios';
+
+const { Title, Paragraph } = Typography;
 const { TextArea } = Input;
 
 interface ConversionParams {
@@ -118,9 +118,6 @@ const ModernDWGConverter: React.FC<ModernDWGConverterProps> = ({ onJobCreated })
       const formData = new FormData();
       formData.append('dwg_file', dwgFile);
       formData.append('params', JSON.stringify(analyzedParams));
-      const formData = new FormData();
-      formData.append('dwg_file', dwgFile);
-      formData.append('params', JSON.stringify(defaultParams));
 
       const response = await axios.post('/api/enhanced/convert-dwg', formData, {
         headers: {
@@ -164,10 +161,6 @@ const ModernDWGConverter: React.FC<ModernDWGConverterProps> = ({ onJobCreated })
         </Upload.Dragger>
       </div>
       
-<<<<<<< HEAD
-      </Upload.Dragger>
-      </div>
-      
       <div style={{ margin: '16px 0' }}>
         <div style={{ marginBottom: '8px' }}>
           <label style={{ fontWeight: 500, color: '#595959', fontSize: '14px' }}>
@@ -186,19 +179,17 @@ const ModernDWGConverter: React.FC<ModernDWGConverterProps> = ({ onJobCreated })
         />
       </div>
       
-=======
->>>>>>> d18386a6280d86de604b6f32302700ddcb205f55
-      <div style={{ marginTop: '16px', textAlign: 'center' }}>
-        <Button 
-          type="primary" 
-          size="large"
-          icon={<FilePdfOutlined />}
-          onClick={startConversion}
-          disabled={fileList.length < 1 || isConverting || isAnalyzing}
-          loading={isConverting || isAnalyzing}
-        >
-          {isConverting || isAnalyzing ? '处理中...' : '开始转换'}
-        </Button>
+      <div style={{ marginTop: '16px', textAlign: 'center' }}>
+        <Button 
+          type="primary" 
+          size="large"
+          icon={<FilePdfOutlined />}
+          onClick={startConversion}
+          disabled={fileList.length < 1 || isConverting || isAnalyzing}
+          loading={isConverting || isAnalyzing}
+        >
+          {isConverting || isAnalyzing ? '处理中...' : '开始转换'}
+        </Button>
       </div>
       
       {conversionError && (
