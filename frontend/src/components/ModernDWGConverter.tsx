@@ -1,10 +1,10 @@
-import React, { useState } from 'react';
-import { Upload, Button, Card, Typography, Space, message, Alert, Input } from 'antd';
-import { UploadOutlined, FilePdfOutlined, RobotOutlined } from '@ant-design/icons';
-import type { UploadFile, UploadProps } from "antd/es/upload/interface";
-import axios from 'axios';
-
-const { Title, Paragraph } = Typography;
+import React, { useState } from 'react';
+import { Upload, Button, Card, Typography, Space, message, Alert, Input } from 'antd';
+import { UploadOutlined, FilePdfOutlined, RobotOutlined } from '@ant-design/icons';
+import type { UploadFile, UploadProps } from "antd/es/upload/interface";
+import axios from 'axios';
+
+const { Title, Paragraph } = Typography;
 const { TextArea } = Input;
 
 interface ConversionParams {
@@ -33,57 +33,6 @@ const ModernDWGConverter: React.FC<ModernDWGConverterProps> = ({ onJobCreated })
     setFileList(newFileList);
   };
 
-  // 分析自然语言需求
-  const analyzeUserRequest = async () => {
-    if (!userRequest.trim()) {
-      // 使用默认参数
-      return {
-        auto_fit: true,
-        center: true,
-        paper_size: null,
-        margin: null,
-        grayscale: false,
-        monochrome: false,
-        layers: null
-      };
-    }
-
-    setIsAnalyzing(true);
-    try {
-      const response = await axios.post('/api/enhanced/analyze-request', {
-        request: userRequest
-      });
-
-      if (response.data.params) {
-        return response.data.params;
-      } else {
-        return {
-          auto_fit: true,
-          center: true,
-          paper_size: null,
-          margin: null,
-          grayscale: false,
-          monochrome: false,
-          layers: null
-        };
-      }
-    } catch (error) {
-      console.error('Analysis error:', error);
-      message.error('需求分析失败，将使用默认参数');
-      return {
-        auto_fit: true,
-        center: true,
-        paper_size: null,
-        margin: null,
-        grayscale: false,
-        monochrome: false,
-        layers: null
-      };
-    } finally {
-      setIsAnalyzing(false);
-    }
-  };
-
   // 开始转换
   const startConversion = async () => {
     if (fileList.length < 1) {
@@ -105,13 +54,73 @@ const ModernDWGConverter: React.FC<ModernDWGConverterProps> = ({ onJobCreated })
     setIsConverting(true);
     setConversionError(null);
 
+    // 分析用户需求的函数
+    const analyzeUserRequest = async () => {
+      if (!userRequest.trim()) {
+        // 如果没有用户需求，使用默认参数
+        return {
+          auto_fit: true,
+          center: true,
+          paper_size: null,
+          margin: null,
+          grayscale: false,
+          monochrome: false,
+          layers: null
+        };
+      }
+
+      setIsAnalyzing(true);
+      try {
+        const response = await axios.post('/api/enhanced/analyze-request', {
+          request: userRequest
+        });
+
+        if (response.data.params) {
+          return response.data.params;
+        } else {
+          return {
+            auto_fit: true,
+            center: true,
+            paper_size: null,
+            margin: null,
+            grayscale: false,
+            monochrome: false,
+            layers: null
+          };
+        }
+      } catch (error) {
+        console.error('Analysis error:', error);
+        message.error('需求分析失败，将使用默认参数');
+        return {
+          auto_fit: true,
+          center: true,
+          paper_size: null,
+          margin: null,
+          grayscale: false,
+          monochrome: false,
+          layers: null
+        };
+      } finally {
+        setIsAnalyzing(false);
+      }
+    };
+
     try {
       // 分析用户需求
       const analyzedParams = await analyzeUserRequest();
       
+      const dwgFile = fileList[0].originFileObj;
+      if (!dwgFile) {
+        message.error('文件无效');
+        return;
+      }
+
       const formData = new FormData();
       formData.append('dwg_file', dwgFile);
       formData.append('params', JSON.stringify(analyzedParams));
+      const formData = new FormData();
+      formData.append('dwg_file', dwgFile);
+      formData.append('params', JSON.stringify(defaultParams));
 
       const response = await axios.post('/api/enhanced/convert-dwg', formData, {
         headers: {
@@ -155,6 +164,10 @@ const ModernDWGConverter: React.FC<ModernDWGConverterProps> = ({ onJobCreated })
         </Upload.Dragger>
       </div>
       
+<<<<<<< HEAD
+      </Upload.Dragger>
+      </div>
+      
       <div style={{ margin: '16px 0' }}>
         <div style={{ marginBottom: '8px' }}>
           <label style={{ fontWeight: 500, color: '#595959', fontSize: '14px' }}>
@@ -173,17 +186,19 @@ const ModernDWGConverter: React.FC<ModernDWGConverterProps> = ({ onJobCreated })
         />
       </div>
       
-      <div style={{ marginTop: '16px', textAlign: 'center' }}>
-        <Button 
-          type="primary" 
-          size="large"
-          icon={<FilePdfOutlined />}
-          onClick={startConversion}
-          disabled={fileList.length < 1 || isConverting || isAnalyzing}
-          loading={isConverting || isAnalyzing}
-        >
-          {isConverting || isAnalyzing ? '处理中...' : '开始转换'}
-        </Button>
+=======
+>>>>>>> d18386a6280d86de604b6f32302700ddcb205f55
+      <div style={{ marginTop: '16px', textAlign: 'center' }}>
+        <Button 
+          type="primary" 
+          size="large"
+          icon={<FilePdfOutlined />}
+          onClick={startConversion}
+          disabled={fileList.length < 1 || isConverting || isAnalyzing}
+          loading={isConverting || isAnalyzing}
+        >
+          {isConverting || isAnalyzing ? '处理中...' : '开始转换'}
+        </Button>
       </div>
       
       {conversionError && (
